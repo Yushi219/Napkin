@@ -1294,10 +1294,12 @@ export function setSelection(indices) {
 }
 
 function resize(canvas) {
-  const el = canvas.parentElement;
-  if (el.clientWidth < 4 || el.clientHeight < 4) return;
-  renderer.setSize(el.clientWidth, el.clientHeight, false);
-  camera.aspect = el.clientWidth / el.clientHeight;
+  // size to the CANVAS, not its parent: an aspect-ratio frame letterboxes the
+  // canvas inside a full-bleed viewport, and the renderer must follow the frame
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (w < 4 || h < 4) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
 

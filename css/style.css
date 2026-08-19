@@ -668,23 +668,7 @@ body.dev-tablet #chatbar, body.dev-phone #chatbar { padding-bottom: calc(9px + e
 body.dev-phone #dash { padding-top: calc(8px + env(safe-area-inset-top)); }
 
 /* --- iPad: napkin gets the big half, panes stack tighter --- */
-@media (pointer: coarse) and (min-width: 700px) {
-  #site-bar { max-width: min(620px, calc(100% - 24px)); }
-  #model-controls { gap: 6px; }
-  #chat-input { font-size: 16px; }
-  .nap-tile:hover { transform: none; }   /* no hover state on a touchscreen */
-  #stage { grid-template-columns: 1fr 0fr 152px; }
-  body.workspace #stage { grid-template-columns: 0.85fr 1.15fr 0fr; }
-  #napkin { height: min(56vh, 620px); max-width: 88%; }
-  body.workspace #napkin { height: auto; width: min(100%, 560px); }
-  body.workspace #napkin-wrap { padding: 16px 12px 8px; }
-  .nap-tile { width: 92px; }
-  .nt-paper { width: 92px; height: 92px; }
-  #gallery { padding: 10px 6px 18px; }
-  #site-bar { gap: 7px; padding: 7px 10px; }
-  #model-controls { gap: 5px; }
-  .pill-btn { font-size: 11.5px; padding: 6px 11px; }
-}
+
 
 /* --- Phone: one pane at a time, tab bar switches --- */
 @media (max-width: 700px) {
@@ -1045,66 +1029,136 @@ body.workspace .splitter#split-rail { display: none; }
 #phone-bar button span { font-size: 9.5px; letter-spacing: .2px; }
 #metric-sheet { display: none; }
 
-@media (pointer: coarse) {
-  /* the model window is sacred: sheets sit under it, never over it */
+
+
+/* ================= Frame ratio ================= */
+/* The viewport stays full-bleed; the canvas is letterboxed inside it, so the
+   picture you compose is the picture the render receives. */
+#viewport { display: flex; align-items: center; justify-content: center; background: #eceadf; }
+#model-canvas, #anno-canvas, #hand-canvas, #render-layer {
+  aspect-ratio: var(--vp-aspect, 16 / 9);
+  width: auto; height: auto;
+  max-width: 100%; max-height: 100%;
+  margin: auto;
+}
+#model-canvas { display: block; }
+#anno-canvas, #hand-canvas, #render-layer { position: absolute; inset: 0; }
+#viewport > #anno-canvas, #viewport > #hand-canvas, #viewport > #render-layer {
+  left: 50%; top: 50%; transform: translate(-50%, -50%); inset: auto;
+}
+.vmode.aspect { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .5px; }
+
+/* ================= Touch layout (phones and tablets) ================= */
+/* Gated by width as well as pointer: a touchscreen laptop is still a desktop. */
+@media (pointer: coarse) and (max-width: 1200px) {
+  body.workspace #stage,
+  body.landing #stage,
+  #stage { grid-template-columns: 1fr !important; grid-template-rows: 1fr !important; }
+  body.landing #stage { grid-template-rows: 1fr auto !important; }
+  #left-col, #mid-col { grid-column: 1 !important; grid-row: 1 !important; }
+  body.landing #gallery-wrap { grid-column: 1 !important; grid-row: 2 !important; }
+  body.workspace #gallery-wrap, body.workspace #mobile-tabs { display: none; }
+  body.workspace.pane-model #left-col { display: none; }
+  body.workspace.pane-sketch #mid-col { display: none; }
+  body.workspace #stage > section + section { border-left: none; }
+
+  /* the metric rail belongs in the Metrics sheet, not over the model */
+  body.workspace #metric-rail { display: none; }
+  #dash { padding: calc(5px + env(safe-area-inset-top)) 10px 5px; gap: 8px; }
+  .dash-type label, #dash-signature, .brand-sub { display: none; }
+
   #phone-bar { display: flex; }
   body.landing #phone-bar { display: none; }
-  body.workspace #mobile-tabs { display: none; }
 
+  /* ---- the work bar: small, quiet, thumb-sized ---- */
   #phone-bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-    display: flex; align-items: stretch; gap: 2px;
-    background: #fffdf8f7; backdrop-filter: blur(12px);
+    align-items: stretch; gap: 2px;
+    background: #fffdf8ee; backdrop-filter: blur(14px);
     border-top: 1px solid var(--line);
-    padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+    padding: 3px 6px calc(3px + env(safe-area-inset-bottom));
   }
   #phone-bar button {
-    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
-    background: none; border: none; cursor: pointer; padding: 6px 2px;
-    border-radius: 12px; color: var(--muted); font-family: var(--font-ui);
-    transition: color .15s, background .15s;
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: none; cursor: pointer; padding: 5px 2px;
+    border-radius: 10px; color: var(--muted); font-family: var(--font-ui);
   }
+  #phone-bar button svg { width: 19px; height: 19px; }
+  #phone-bar button span { font-size: 9px; }
   #phone-bar button.active { color: var(--accent); background: var(--accent-soft); }
-  #phone-bar .pb-say { color: var(--ink); }
-  #phone-bar .pb-say.active { color: var(--accent); }
 
-  /* every panel is the same sheet */
+  /* ---- sheets: low, translucent, horizontal ---- */
   #site-bar, #model-controls, #params-panel, #chatbar, #metric-sheet {
-    position: fixed; left: 0; right: 0; top: auto;
-    bottom: calc(60px + env(safe-area-inset-bottom));
+    position: fixed; left: 6px; right: 6px; top: auto;
+    bottom: calc(52px + env(safe-area-inset-bottom));
     width: auto; max-width: none; z-index: 39;
-    transform: translateY(118%); transition: transform .3s cubic-bezier(.2,.85,.3,1);
-    background: var(--panel);
-    border: none; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
-    box-shadow: 0 -10px 34px #00000020;
-    max-height: 46vh; overflow-y: auto; scrollbar-width: none;
-    padding: 16px 14px 14px; margin: 0;
-    display: flex; flex-direction: column; gap: 8px; align-items: stretch;
+    transform: translateY(118%); transition: transform .28s cubic-bezier(.2,.85,.3,1);
+    background: #fffdf8b8; backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid #ffffff88; border-radius: 16px;
+    box-shadow: 0 -6px 26px #00000018;
+    max-height: 38vh; overflow-y: auto; scrollbar-width: none;
+    padding: 14px 10px 10px; margin: 0;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   }
+  #site-bar::-webkit-scrollbar, #model-controls::-webkit-scrollbar,
+  #params-panel::-webkit-scrollbar, #chatbar::-webkit-scrollbar,
+  #metric-sheet::-webkit-scrollbar { display: none; }
   #site-bar::before, #model-controls::before, #params-panel::before,
   #chatbar::before, #metric-sheet::before {
-    content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
-    width: 38px; height: 4px; border-radius: 2px; background: var(--line-soft);
+    content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    width: 34px; height: 3px; border-radius: 2px; background: #00000018;
   }
   body.sheet-scene #site-bar, body.sheet-tools #model-controls,
   body.sheet-params #params-panel, body.sheet-chat #chatbar,
   body.sheet-metric #metric-sheet { transform: translateY(0); }
 
-  /* scene sheet also carries the view modes */
-  #view-modes { padding: 0; gap: 4px; }
-  body.sheet-scene #site-bar #view-modes-slot { display: flex; gap: 4px; }
+  /* controls inside a sheet: chips, not full-width bars */
+  #site-bar select, #site-bar .pill-btn, #model-controls .pill-btn, .vmode {
+    flex: 0 0 auto; width: auto; font-size: 11px; padding: 6px 11px;
+  }
+  #site-bar .seg, #site-bar .seg.small { flex: 0 0 auto; width: auto; display: inline-flex; }
+  #site-bar .seg button { flex: 0 0 auto; padding: 6px 10px; font-size: 10.5px; }
+  #sun-hour { flex: 1 1 120px; width: auto; min-width: 110px; }
+  #sun-readout { flex: 0 0 auto; width: auto; }
   #site-bar .sb-sep, #site-bar .sb-break { display: none; }
-  #site-bar select, #site-bar .seg, #sun-hour { width: 100%; }
-  #site-bar .seg.small button { flex: 1; padding: 9px 4px; }
-  #model-controls { flex-direction: row; flex-wrap: wrap; }
-  #model-controls .pill-btn { flex: 1 1 46%; justify-content: center; padding: 11px 8px; }
-  #chat-log { max-height: 28vh; flex: none; }
-  #chatbar .chat-row { flex-wrap: wrap; gap: 6px; }
-  #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; padding: 11px 12px; }
+  #model-controls { flex-direction: row; }
+  #model-controls .pill-btn { flex: 0 0 auto; justify-content: center; }
+  #view-modes { padding: 0; gap: 4px; flex: 0 0 auto; }
+
+  /* params: two compact columns of sliders */
+  #params-panel { display: block; padding: 16px 10px 10px; }
+  #params-panel .pgroup {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px;
+    border: none; padding: 0 0 6px; margin-bottom: 6px;
+    border-bottom: 1px solid #00000010;
+  }
+  #params-panel .pgroup-head { grid-column: 1 / -1; margin-bottom: 2px; }
+  #params-panel .prow { grid-template-columns: 46px 1fr 34px; gap: 5px; margin: 0; }
+  #params-panel .prow label { font-size: 9px; }
+  #params-panel .pval { font-size: 9px; }
+  #params-panel .pchoice { grid-column: span 1; }
+  #params-panel .pflag { grid-column: span 1; }
+
+  /* metrics: a tidy grid of cards */
+  #metric-sheet { display: flex; }
+  #metric-sheet .metric { flex: 1 1 28%; min-width: 92px; padding: 5px 9px; }
+
+  /* chat */
+  #chat-log { max-height: 22vh; flex: 1 1 100%; }
+  #chatbar { gap: 6px; }
+  #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; padding: 10px 12px; }
   .chat-glyph { display: none; }
-  #chatbar .build-btn.small { flex: 1; padding: 11px 8px; }
-  #metric-sheet { flex-direction: row; flex-wrap: wrap; gap: 8px; padding-top: 20px; }
-  #metric-sheet .metric { flex: 1 1 30%; }
-  .drawer-tab { display: none; }
-  #viewport { padding-bottom: 0; }
+  #chatbar .build-btn.small { flex: 1 1 auto; padding: 9px 12px; }
+  #btn-mic, #ref-label { flex: 0 0 auto; padding: 8px 12px; }
+
+  .drawer-tab, .splitter, #gal-preview { display: none !important; }
+  #render-strip { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
+}
+
+/* phones only: the napkin page keeps its rail below */
+@media (max-width: 700px) {
+  #napkin { height: auto; width: min(92vw, 44vh); max-width: 92vw; }
+  #phone-bar button span { font-size: 8.5px; }
+  #params-panel .pgroup { grid-template-columns: 1fr; }
+  #metric-sheet .metric { flex: 1 1 44%; }
 }

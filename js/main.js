@@ -932,10 +932,28 @@ function wire() {
     });
   };
 
-  if (isTouch()) {
+  if (isTouch() && innerWidth <= 1200) {
     // one home for everything that changes how the scene looks
     $('site-bar').prepend($('view-modes'));
   }
+
+  // Frame ratio: the canvas is letterboxed to this, so what you compose is
+  // exactly what the render model receives.
+  const RATIOS = [['16:9', 16 / 9], ['3:2', 3 / 2], ['4:3', 4 / 3], ['1:1', 1], ['9:16', 9 / 16]];
+  let ratioIndex = Math.max(0, RATIOS.findIndex(r => r[0] === localStorage.getItem('napkin_ratio')));
+  function applyRatio() {
+    const [label, value] = RATIOS[ratioIndex];
+    document.documentElement.style.setProperty('--vp-aspect', String(value));
+    $('btn-aspect').textContent = label;
+    localStorage.setItem('napkin_ratio', label);
+    setTimeout(() => dispatchEvent(new Event('resize')), 40);
+  }
+  $('btn-aspect').addEventListener('click', () => {
+    ratioIndex = (ratioIndex + 1) % RATIOS.length;
+    applyRatio();
+  });
+  $('btn-aspect').addEventListener('dblclick', () => { ratioIndex = 0; applyRatio(); });
+  applyRatio();
 
   cycler($('btn-landscape'),
     () => {
