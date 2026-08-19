@@ -20,9 +20,17 @@ export function renderMetrics(m) {
       <div class="m-value">${v}<span class="unit">${def.unit}</span> <span class="m-delta">${dir}</span></div>
     </div>`;
   }).join('');
-  rail.querySelectorAll('.metric').forEach(el =>
-    el.addEventListener('click', e => showMetricPopover(el, el.dataset.m, m)));
+  lastM = m;   // the sheet on a phone shows clones, so the handler is delegated
 }
+
+// One delegated listener, because the Metrics sheet holds cloned cards and a
+// clone never carries its listeners with it.
+let lastM = null;
+document.addEventListener('click', e => {
+  const card = e.target.closest('.metric');
+  if (!card || !lastM) return;
+  showMetricPopover(card, card.dataset.m, lastM);
+});
 
 function showMetricPopover(anchor, id, m) {
   const def = METRIC_DEFS.find(d => d.id === id);
@@ -36,8 +44,13 @@ function showMetricPopover(anchor, id, m) {
     <div class="p-src"><b>Source</b> · ${esc(p.source)}</div>`;
   pop.classList.remove('hidden');
   const r = anchor.getBoundingClientRect();
-  pop.style.top = (r.bottom + 10) + 'px';
-  pop.style.left = Math.max(10, Math.min(innerWidth - 335, r.left + r.width / 2 - 160)) + 'px';
+  const w = Math.min(320, innerWidth - 20);
+  pop.style.width = w + 'px';
+  // a card inside the bottom sheet has no room below it, so the note flips up
+  const h = pop.offsetHeight || 200;
+  const below = r.bottom + 10;
+  pop.style.top = (below + h < innerHeight - 10 ? below : Math.max(10, r.top - h - 10)) + 'px';
+  pop.style.left = Math.max(10, Math.min(innerWidth - w - 10, r.left + r.width / 2 - w / 2)) + 'px';
 }
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest('#popover') && !e.target.closest('.metric')) $('popover')?.classList.add('hidden');

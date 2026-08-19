@@ -4,6 +4,14 @@
 //   PINCH (thumb+index closed)      grab the volume under the cursor and drag it
 //   OPEN PALM (fingers spread)      orbit the camera by moving your hand
 //   FIST (fingers curled)           zoom: raise to zoom out, lower to zoom in
+//   OPEN PALM, held still           re-frame the building
+//
+// Three rules keep it from firing by accident, which is what makes camera
+// gestures unusable otherwise:
+//   - a shape has to hold for DWELL_MS before it becomes the active mode, so
+//     the pinch a hand passes through on its way to a fist never grabs;
+//   - movement under DEADZONE is treated as a resting hand, not a drag;
+//   - a hand out of frame ends the gesture and nothing moves.
 //
 // A live preview window shows the camera with the tracked skeleton drawn over
 // it, so you can see exactly what the machine sees.
@@ -13,6 +21,13 @@ let cb = {};
 let mode = null;            // 'pinch' | 'open' | 'fist' | null
 let smooth = { x: 0.5, y: 0.5 };
 let lastPos = null;
+let pending = null, pendingSince = 0;   // a shape waiting out its dwell
+let stillSince = 0, heldFired = false;  // open palm parked in place
+
+const DWELL_MS = 130;      // long enough to skip shapes passed through
+const DEADZONE = 0.006;    // a resting hand drifts about this much per frame
+const HOLD_MS = 1200;      // open palm held still re-frames the view
+const STILL = 0.02;        // how far "still" is allowed to wander
 
 const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/';
 
@@ -86,6 +101,7 @@ function onResults(res, video, canvas) {
 
   if (!lm) {
     if (mode) { cb.onGestureEnd?.(mode); mode = null; lastPos = null; }
+    pending = null; stillSince = 0; heldFired = false;
     cb.onCursor?.(null);
     return;
   }
@@ -95,21 +111,41 @@ function onResults(res, video, canvas) {
   smooth.x += (px - smooth.x) * 0.35;
   smooth.y += (py - smooth.y) * 0.35;
 
-  const g = classify(lm);
-  cb.onCursor?.({ x: smooth.x, y: smooth.y, gesture: g || mode });
+  const raw = classify(lm);
+  const now = performance.now();
+  cb.onCursor?.({ x: smooth.x, y: smooth.y, gesture: mode || raw });
 
-  if (g !== mode) {
+  // dwell: a shape earns the mode only once it has held still-ish for a moment
+  if (raw !== pending) { pending = raw; pendingSince = now; }
+  const settled = raw !== null && now - pendingSince >= DWELL_MS;
+
+  if (settled && raw !== mode) {
     if (mode) cb.onGestureEnd?.(mode);
-    mode = g;
+    mode = raw;
     lastPos = { x: smooth.x, y: smooth.y };
-    if (mode) cb.onGestureStart?.(mode, smooth.x, smooth.y);
+    stillSince = now; heldFired = false;
+    cb.onGestureStart?.(mode, smooth.x, smooth.y);
     return;
   }
-  if (mode && lastPos) {
-    const dx = smooth.x - lastPos.x, dy = smooth.y - lastPos.y;
-    cb.onGestureMove?.(mode, smooth.x, smooth.y, dx, dy);
-    lastPos = { x: smooth.x, y: smooth.y };
+  if (raw === null && mode && now - pendingSince >= DWELL_MS) {
+    cb.onGestureEnd?.(mode); mode = null; lastPos = null;
+    return;
   }
+  if (!mode || !lastPos) return;
+
+  const dx = smooth.x - lastPos.x, dy = smooth.y - lastPos.y;
+
+  // an open palm parked in one place is a request to re-frame, not a drag
+  if (Math.hypot(dx, dy) > STILL) { stillSince = now; heldFired = false; }
+  else if (mode === 'open' && !heldFired && now - stillSince >= HOLD_MS) {
+    heldFired = true;
+    cb.onHold?.(mode);
+    return;
+  }
+
+  if (Math.abs(dx) < DEADZONE && Math.abs(dy) < DEADZONE) return;
+  cb.onGestureMove?.(mode, smooth.x, smooth.y, dx, dy);
+  lastPos = { x: smooth.x, y: smooth.y };
 }
 
 // ---- the preview window: mirrored camera + skeleton ----

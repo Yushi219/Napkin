@@ -941,13 +941,58 @@ function wire() {
   // exactly what the render model receives.
   const RATIOS = [['16:9', 16 / 9], ['3:2', 3 / 2], ['4:3', 4 / 3], ['1:1', 1], ['9:16', 9 / 16]];
   let ratioIndex = Math.max(0, RATIOS.findIndex(r => r[0] === localStorage.getItem('napkin_ratio')));
+  // The frame is measured here rather than in CSS: letterboxing a canvas with
+  // aspect-ratio makes its layout size depend on its own drawing buffer, and
+  // that loop is what stretched the model when the ratio changed.
+  function fitFrame() {
+    const vp = $('viewport'), fr = $('vp-frame');
+    if (!vp || !fr) return;
+    if (document.body.classList.contains('fs')) { fr.style.width = ''; fr.style.height = ''; return; }
+    const a = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-aspect')) || 16 / 9;
+    const W = vp.clientWidth, H = vp.clientHeight;
+    if (W < 8 || H < 8) return;
+    const w = Math.min(W, H * a);
+    fr.style.width = Math.round(w) + 'px';
+    fr.style.height = Math.round(w / a) + 'px';
+  }
+  new ResizeObserver(fitFrame).observe($('viewport'));
+
   function applyRatio() {
     const [label, value] = RATIOS[ratioIndex];
     document.documentElement.style.setProperty('--vp-aspect', String(value));
     $('btn-aspect').textContent = label;
     localStorage.setItem('napkin_ratio', label);
-    setTimeout(() => dispatchEvent(new Event('resize')), 40);
+    fitFrame();
   }
+
+  // ---- fullscreen: the model takes the whole screen, ratio set aside ----
+  // Done in CSS first because an iPhone only grants the Fullscreen API to a
+  // <video>; the API is asked for on top, where it exists, to drop the chrome.
+  let camHome = null;
+  function placeCamPane() {
+    const cam = $('cam-pane'), vp = $('viewport');
+    if (!cam) return;
+    if (document.body.classList.contains('fs')) {
+      if (cam.parentElement !== vp) { camHome = cam.parentElement; vp.appendChild(cam); }
+    } else if (camHome && cam.parentElement !== camHome) {
+      camHome.appendChild(cam);
+    }
+  }
+  function setFullscreen(on) {
+    document.body.classList.toggle('fs', on);
+    placeCamPane();
+    fitFrame();
+    $('btn-fs').title = on ? 'Leave fullscreen' : 'Fullscreen — the model fills the screen';
+    if (on && !document.fullscreenElement) $('viewport').requestFullscreen?.().catch(() => {});
+    if (!on && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  }
+  $('btn-fs').addEventListener('click', () => setFullscreen(!document.body.classList.contains('fs')));
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && document.body.classList.contains('fs')) setFullscreen(false);
+  });
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.body.classList.contains('fs')) setFullscreen(false);
+  });
   $('btn-aspect').addEventListener('click', () => {
     ratioIndex = (ratioIndex + 1) % RATIOS.length;
     applyRatio();
@@ -1090,10 +1135,12 @@ function wire() {
             grabbed = null;
           }
         },
+        onHold: () => { model.frameBuilding(); ui.toast('Re-framed.'); },
       });
       $('cam-pane').classList.remove('hidden');
+      placeCamPane();
       busy.classList.remove('busy');
-      busy.textContent = 'Hands on: pinch grabs a volume · open palm orbits · fist rises and falls to zoom.';
+      busy.textContent = 'Hands on: open palm orbits · pinch grabs a volume · fist rises and falls to zoom · hold an open palm still to re-frame.';
     } catch (e) {
       btn.classList.remove('active');
       busy.className = 'cmsg ai err';

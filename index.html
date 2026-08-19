@@ -19,22 +19,22 @@
   "imports": {
     "three": "./js/vendor/three.module.js",
     "three/addons/": "./js/vendor/addons/",
-    "./js/chat.js": "./js/chat.js?v=20260819j",
-    "./js/device.js": "./js/device.js?v=20260819j",
-    "./js/examples.js": "./js/examples.js?v=20260819j",
-    "./js/gallery.js": "./js/gallery.js?v=20260819j",
-    "./js/hands.js": "./js/hands.js?v=20260819j",
-    "./js/interpret.js": "./js/interpret.js?v=20260819j",
-    "./js/main.js": "./js/main.js?v=20260819j",
-    "./js/metrics.js": "./js/metrics.js?v=20260819j",
-    "./js/model.js": "./js/model.js?v=20260819j",
-    "./js/render.js": "./js/render.js?v=20260819j",
-    "./js/sketch.js": "./js/sketch.js?v=20260819j",
-    "./js/solar.js": "./js/solar.js?v=20260819j",
-    "./js/splitters.js": "./js/splitters.js?v=20260819j",
-    "./js/tower.js": "./js/tower.js?v=20260819j",
-    "./js/ui.js": "./js/ui.js?v=20260819j",
-    "./js/versions.js": "./js/versions.js?v=20260819j"
+    "./js/chat.js": "./js/chat.js?v=20260819k",
+    "./js/device.js": "./js/device.js?v=20260819k",
+    "./js/examples.js": "./js/examples.js?v=20260819k",
+    "./js/gallery.js": "./js/gallery.js?v=20260819k",
+    "./js/hands.js": "./js/hands.js?v=20260819k",
+    "./js/interpret.js": "./js/interpret.js?v=20260819k",
+    "./js/main.js": "./js/main.js?v=20260819k",
+    "./js/metrics.js": "./js/metrics.js?v=20260819k",
+    "./js/model.js": "./js/model.js?v=20260819k",
+    "./js/render.js": "./js/render.js?v=20260819k",
+    "./js/sketch.js": "./js/sketch.js?v=20260819k",
+    "./js/solar.js": "./js/solar.js?v=20260819k",
+    "./js/splitters.js": "./js/splitters.js?v=20260819k",
+    "./js/tower.js": "./js/tower.js?v=20260819k",
+    "./js/ui.js": "./js/ui.js?v=20260819k",
+    "./js/versions.js": "./js/versions.js?v=20260819k"
   }
 }
 </script>
@@ -133,10 +133,12 @@ if (location.protocol === 'file:') {
         <span class="pane-tag">hand tracking</span>
         <canvas id="cam-canvas" width="320" height="240"></canvas>
         <div id="cam-legend">
-          <span><i class="g-pinch"></i> pinch = grab a volume</span>
-          <span><i class="g-open"></i> open palm = orbit</span>
-          <span><i class="g-fist"></i> fist = zoom</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 11V5.4a1.35 1.35 0 0 1 2.7 0V10"/><path d="M11.2 10V4.2a1.35 1.35 0 0 1 2.7 0V10"/><path d="M13.9 10.6V6a1.35 1.35 0 0 1 2.7 0v7"/><path d="M8.5 11 6.4 13a1.9 1.9 0 0 0-.2 2.5l2.1 3a4.8 4.8 0 0 0 3.9 2h1.4a3.5 3.5 0 0 0 3.5-3.5V13"/></svg><b>Open palm</b> orbit</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 6.5 11 10.2"/><path d="M16.5 6.5 13 10.2"/><circle cx="12" cy="12.2" r="1.9"/><path d="M7.6 14.6a4.9 4.9 0 0 0 8.8 0"/></svg><b>Pinch</b> grab a volume</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.6" y="8.4" width="12.8" height="9.6" rx="4"/><path d="M9 8.4V6.8a1.5 1.5 0 0 1 3 0v1.6"/><path d="M12 8.4V6.3a1.5 1.5 0 0 1 3 0v2.1"/><path d="M9.2 12.8h5.6"/></svg><b>Fist</b> raise or lower to zoom</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.2"/><path d="M12 7.6v4.6l3 1.8"/></svg><b>Hold still</b> re-frame the building</span>
         </div>
+        <div id="cam-hint">Drop your hand out of frame and nothing moves.</div>
       </div>
     </div>
   </section>
@@ -157,13 +159,19 @@ if (location.protocol === 'file:') {
     </div>
 
     <div id="viewport">
-      <canvas id="model-canvas"></canvas>
-      <canvas id="anno-canvas"></canvas>
-      <canvas id="hand-canvas"></canvas>
-      <div id="render-layer" class="hidden">
-        <img id="render-img" alt="render" />
-        <div id="compare-divider" class="hidden"><span class="cd-grip">‖</span></div>
+      <div id="vp-frame">
+        <canvas id="model-canvas"></canvas>
+        <canvas id="anno-canvas"></canvas>
+        <canvas id="hand-canvas"></canvas>
+        <div id="render-layer" class="hidden">
+          <img id="render-img" alt="render" />
+          <div id="compare-divider" class="hidden"><span class="cd-grip">‖</span></div>
+        </div>
       </div>
+      <button id="btn-fs" title="Fullscreen — the model fills the screen">
+        <svg class="fs-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>
+        <svg class="fs-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/></svg>
+      </button>
       <div id="render-strip" class="hidden"></div>
       <div id="render-veil" class="hidden"><div class="veil-spin"></div><span id="veil-label">rendering…</span></div>
       <div id="model-badge"></div>
@@ -256,7 +264,7 @@ if (location.protocol === 'file:') {
 </div>
 <div id="toast"></div>
 
-<script src="js/config.local.js?v=20260819j"></script>
-<script type="module" src="js/main.js?v=20260819j"></script>
+<script src="js/config.local.js?v=20260819k"></script>
+<script type="module" src="js/main.js?v=20260819k"></script>
 </body>
 </html>
