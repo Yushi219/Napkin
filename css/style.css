@@ -297,7 +297,14 @@ body.workspace #napkin { height: auto; width: min(100%, 440px); transform: rotat
   pointer-events: none;
   transition: opacity .4s;
 }
-#sketch-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; z-index: 3; }
+#sketch-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; z-index: 3;
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#napkin { -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 #napkin-hint {
   position: absolute; left: 0; right: 0; bottom: 16%;
   text-align: center; pointer-events: none;
@@ -661,6 +668,10 @@ body.dev-phone #dash { padding-top: calc(8px + env(safe-area-inset-top)); }
 
 /* --- iPad: napkin gets the big half, panes stack tighter --- */
 @media (pointer: coarse) and (min-width: 700px) {
+  #site-bar { max-width: min(620px, calc(100% - 24px)); }
+  #model-controls { gap: 6px; }
+  #chat-input { font-size: 16px; }
+  .nap-tile:hover { transform: none; }   /* no hover state on a touchscreen */
   #stage { grid-template-columns: 1fr 0fr 152px; }
   body.workspace #stage { grid-template-columns: 0.85fr 1.15fr 0fr; }
   #napkin { height: min(56vh, 620px); max-width: 88%; }
@@ -676,74 +687,144 @@ body.dev-phone #dash { padding-top: calc(8px + env(safe-area-inset-top)); }
 
 /* --- Phone: one pane at a time, tab bar switches --- */
 @media (max-width: 700px) {
-  #dash { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
-  .brand-name { font-size: 15px; letter-spacing: 3px; }
-  .dash-type { order: 3; }
-  #metric-rail { order: 4; width: 100%; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  /* ---------- phone: one thing at a time, nothing clipped ---------- */
+  #dash {
+    flex-wrap: nowrap; gap: 8px; padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  #dash::-webkit-scrollbar { display: none; }
+  .brand { min-width: auto; gap: 6px; }
+  .brand-name { font-size: 13px; letter-spacing: 2px; }
+  #btn-home { width: 28px; height: 28px; font-size: 14px; }
+  .dash-type { order: 3; gap: 5px; }
+  .dash-type label { display: none; }
+  .dash-type select { padding: 5px 7px; font-size: 11.5px; }
+  #dash-signature { display: none; }
+  #metric-rail {
+    order: 5; width: 100%; gap: 6px; justify-content: flex-start;
+    padding-bottom: 2px; overflow-x: auto; scrollbar-width: none;
+  }
   #metric-rail::-webkit-scrollbar { display: none; }
-  .metric { flex-shrink: 0; }
+  .metric { padding: 4px 9px; }
+  .metric .m-value { font-size: 12.5px; }
 
-  #hero h1 { font-size: 27px; }
-  #napkin { height: min(46vh, 420px); max-width: 92vw; }
-  body.workspace #napkin { height: auto; width: min(94vw, 60vh); }
-  body.workspace #napkin-wrap { padding: 10px 8px 6px; }
-  #hero { margin-bottom: 4px; }
-  .h-1 { font-size: clamp(17px, 5.2vw, 24px); }
-  .h-2 { font-size: clamp(21px, 6.4vw, 30px); }
+  /* ---------- landing: no headline, everything moves up ---------- */
+  #hero h1 { display: none; }
+  #hero { margin: 0 0 6px; }
+  #hero-name { margin-top: 0; gap: 2px; }
+  .sign-guide { font-size: 9px; letter-spacing: 1.2px; }
+  #author-input { width: 118px; }
+  #author-date { width: 92px; }
+
+  body.landing #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
   #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
   #left-col { grid-column: 1; grid-row: 1; }
   #mid-col { grid-column: 1; grid-row: 1; }
-  #gallery-wrap { grid-column: 1; grid-row: 2; padding: 2px 0 4px; }
+  #napkin-wrap { justify-content: flex-start; padding: 8px 8px 4px; gap: 8px; }
+  #napkin { height: auto; width: min(94vw, 58vh); max-width: 94vw; }
+  #sketch-tools { gap: 6px; margin-top: 2px; }
+  #sketch-tools .seg button { min-width: 40px; }
+  #kind-select { padding: 7px 10px; font-size: 11.5px; }
+
+  /* the rail of starter napkins, actually visible */
+  #gallery-wrap {
+    grid-column: 1; grid-row: 2;
+    border-left: none; border-top: 1px solid var(--line);
+    padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
+    background: #fffdf8;
+  }
   .gal-head { flex-direction: row; gap: 8px; margin-bottom: 2px; }
-  .gal-title { font-size: 10.5px; }
+  .gal-title { font-size: 10px; }
+  .gal-hint { display: none; }
   #gallery {
     flex-direction: row; align-items: flex-end;
-    overflow-x: auto; overflow-y: hidden; padding: 6px 12px 8px;
-    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
-    mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+    overflow-x: auto; overflow-y: hidden; padding: 4px 12px 6px; gap: 10px;
+    -webkit-mask-image: none; mask-image: none;
   }
-  .nap-tile { width: 72px; }
-  .nap-tile:hover, .nap-tile:focus-visible { transform: translateY(-5px) scale(1.12); }
-  .nt-paper { width: 72px; height: 72px; }
-  .nt-name { font-size: 9.5px; max-width: 76px; }
+  .nap-tile { width: 66px; }
+  .nap-tile:hover, .nap-tile:focus-visible { transform: none; }
+  .nt-paper { width: 66px; height: 66px; }
+  .nt-name { font-size: 9px; max-width: 70px; }
   .nt-type { display: none; }
-  .nap-divider { width: 1px; height: auto; align-self: stretch; margin: 8px 4px; }
-  #napkin-sig .ns-name { font-size: 24px; }
-  #napkin-sig .ns-date { font-size: 12px; }
-  .sign-fields { gap: 6px; }
-  #author-input { width: 118px; }
-  #author-date { width: 84px; }
+  .nap-divider { width: 1px; height: auto; align-self: stretch; margin: 8px 2px; }
+  #napkin-sig .ns-name { font-size: 20px; }
+  #napkin-sig .ns-date { font-size: 11px; }
 
-  body.workspace #mobile-tabs {
-    display: flex; gap: 6px; padding: 7px 12px;
-    background: var(--panel); border-bottom: 1px solid var(--line);
-    position: sticky; top: 0; z-index: 25;
-  }
-  #mobile-tabs button {
-    flex: 1; background: transparent; border: 1px solid var(--line); border-radius: 16px;
-    font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--muted);
-    padding: 7px 0; cursor: pointer;
-  }
-  #mobile-tabs button.active { background: var(--accent-soft); border-color: #d8c3b4; color: var(--accent); }
-
+  /* ---------- workspace: the model fills the screen ---------- */
   body.workspace #stage { grid-template-columns: 1fr; grid-template-rows: 1fr; }
-  body.workspace #gallery-wrap { display: none; }
   body.workspace #stage > section { grid-column: 1; grid-row: 1; }
+  body.workspace #gallery-wrap { display: none; }
   body.workspace.pane-model #left-col { display: none; }
   body.workspace.pane-sketch #mid-col { display: none; }
-  body.workspace #stage > section + section { border-left: none; }
 
-  #model-controls { flex-wrap: wrap; justify-content: center; max-height: 92px; overflow-y: auto; }
-  #site-bar { position: static; transform: none; margin: 8px 10px 0; border-radius: 14px; }
-  #viewport { min-height: 46vh; }
-  #params-panel { position: fixed; left: 10px; right: 10px; bottom: 74px; width: auto; max-height: 46vh; }
-  #chat-log { max-height: 92px; }
-  #chatbar .chat-row { flex-wrap: wrap; }
-  #chat-input { flex: 1 1 100%; order: -1; }
-  #chatbar .build-btn.small { flex: 1; }
-  #concept-pane, #wire-pane { display: none; }
-  .modal-card, #modal-card { width: 94vw !important; }
+  body.workspace #mobile-tabs {
+    display: flex; gap: 5px; padding: 5px 10px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  #mobile-tabs button { padding: 6px 0; font-size: 11.5px; }
+
+  #view-modes { padding: 6px 10px 0; gap: 3px; }
+  .vmode { padding: 5px 11px; font-size: 11px; }
+  #viewport { min-height: 0; }
+
+  /* the two toolbars become drawers that slide in from the edges */
+  #site-bar, #model-controls {
+    position: absolute; z-index: 22; bottom: auto; left: auto; transform: none;
+    max-width: none; width: 176px;
+    flex-direction: column; align-items: stretch; flex-wrap: nowrap;
+    gap: 6px; padding: 10px;
+    background: #fffdf8f5; backdrop-filter: blur(10px);
+    border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 10px 30px #00000020;
+    max-height: 66%; overflow-y: auto; scrollbar-width: none;
+    transition: transform .28s cubic-bezier(.2,.8,.3,1), opacity .2s;
+  }
+  #site-bar { top: 10px; left: 8px; transform: translateX(calc(-100% - 14px)); }
+  #model-controls { top: 10px; right: 8px; transform: translateX(calc(100% + 14px)); }
+  body.drawer-scene #site-bar { transform: none; }
+  body.drawer-tools #model-controls { transform: none; }
+  #site-bar .sb-sep, #site-bar .sb-break { display: none; }
+  #site-bar select, #site-bar .seg, #sun-hour { width: 100%; }
+  #site-bar .seg.small { display: flex; }
+  #site-bar .seg.small button { flex: 1; }
+  #model-controls .pill-btn { width: 100%; justify-content: center; }
+  #sun-readout { width: auto; text-align: center; }
+
+  /* the tabs that open them */
+  .drawer-tab {
+    position: absolute; top: 50%; z-index: 21; transform: translateY(-50%);
+    width: 26px; height: 74px; border: 1px solid var(--line);
+    background: #fffdf8ee; color: var(--ink-soft);
+    font-size: 10px; letter-spacing: 1px; writing-mode: vertical-rl;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  #tab-scene { left: 0; border-left: none; border-radius: 0 12px 12px 0; }
+  #tab-tools { right: 0; border-right: none; border-radius: 12px 0 0 12px; }
+  body.drawer-scene #tab-scene, body.drawer-tools #tab-tools { background: var(--ink); color: var(--paper); }
+
+  #params-panel {
+    position: absolute; left: 8px; right: 8px; top: auto; bottom: 8px;
+    width: auto; max-height: 46%; border-radius: 14px;
+    border: 1px solid var(--line); box-shadow: 0 -6px 24px #00000018;
+  }
+  #render-strip { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
+
+  /* chat: always reachable, never behind the home indicator */
+  #chatbar {
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+    gap: 5px;
+  }
+  #chat-log { max-height: 76px; }
+  #chatbar .chat-row { flex-wrap: wrap; gap: 6px; }
+  #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; }  /* 16px stops iOS zooming on focus */
+  .chat-glyph { display: none; }
+  #ref-label { flex: 0 0 auto; }
+  #chatbar .build-btn.small { flex: 1; padding: 9px 10px; }
+
+  .splitter { display: none !important; }
+  #gal-preview { display: none; }
 }
+
 
 /* --- stylus present: a finer nib and no palm-rejection guesswork --- */
 body.has-pen #napkin-hint::after {

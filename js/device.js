@@ -79,8 +79,10 @@ export function initDevice() {
   }, { passive: false });
   let lastTouch = 0;
   document.addEventListener('touchend', e => {
+    // never interfere with the napkin or the model — they handle their own input
+    if (e.target.closest('#sketch-canvas, #viewport, input, textarea, select, button, label')) { lastTouch = Date.now(); return; }
     const now = Date.now();
-    if (now - lastTouch < 320 && !e.target.closest('input, textarea, select')) e.preventDefault();
+    if (now - lastTouch < 320) e.preventDefault();
     lastTouch = now;
   }, { passive: false });
 

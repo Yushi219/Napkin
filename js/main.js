@@ -892,6 +892,19 @@ function wire() {
     () => { const W = model.resetWeather(); syncSunControls(); return W; },
     W => `${W.label} · ${W.note}`);
 
+  // phone: the two toolbars live in edge drawers, one open at a time
+  const drawer = (tab, cls) => $(tab).addEventListener('click', () => {
+    const open = document.body.classList.contains(cls);
+    document.body.classList.remove('drawer-scene', 'drawer-tools');
+    if (!open) document.body.classList.add(cls);
+  });
+  drawer('tab-scene', 'drawer-scene');
+  drawer('tab-tools', 'drawer-tools');
+  $('viewport').addEventListener('pointerdown', e => {
+    if (e.target.closest('#site-bar, #model-controls, .drawer-tab')) return;
+    document.body.classList.remove('drawer-scene', 'drawer-tools');
+  });
+
   $('btn-compare').addEventListener('click', () => setCompare(!compareOn));
   initCompareDrag();
   initSplitters();
