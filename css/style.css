@@ -362,6 +362,7 @@ body.annotating #mid-col { outline: 2px solid #c0392b55; outline-offset: -2px; }
 }
 #sel-clear { background: none; border: none; color: var(--faint); cursor: pointer; font-size: 12px; }
 #sel-clear:hover { color: var(--bad); }
+#model-badge:empty { display: none; }
 #model-badge {
   position: absolute; bottom: 14px; left: 14px; z-index: 6;
   font-family: var(--font-mono); font-size: 10.5px; color: var(--muted);
@@ -1188,7 +1189,7 @@ body.fs #vp-frame { width: 100% !important; height: 100% !important; }
 body.fs #dash, body.fs #view-modes, body.fs #phone-bar,
 body.fs #left-col, body.fs #gallery-wrap, body.fs .splitter { display: none !important; }
 body.fs #btn-fs { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
-body.fs #model-badge { top: calc(10px + env(safe-area-inset-top)); }
+body.fs #model-badge { bottom: calc(14px + env(safe-area-inset-bottom)); }
 
 /* hand tracking rides in the corner of the fullscreen view */
 body.fs #viewport > #cam-pane {
@@ -1254,3 +1255,22 @@ body.fs #viewport > #cam-pane #cam-hint { border-color: #ffffff1f; color: #b9b3a
   /* the tab bar shows which pane you are in */
   #phone-bar [data-sheet="napkin"].active { color: var(--accent); background: var(--accent-soft); }
 }
+
+/* ================= One icon set ================= */
+/* Every button mark is the same drawing: 24-grid, no fill, 1.7 stroke in the
+   button's own colour — so an icon inherits hover and active states instead
+   of staying a coloured emoji. */
+.ico {
+  width: 13px; height: 13px; flex: 0 0 auto; display: block;
+  fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+.seg button .ico { width: 15px; height: 15px; }
+.seg button { display: inline-flex; align-items: center; justify-content: center; }
+.pill-btn.icon-only { padding: 6px 8px; }
+#btn-settings .ico, #btn-mic .ico { width: 15px; height: 15px; }
+.build-btn .ico { width: 13px; height: 13px; margin-left: 5px; }
+.build-btn { display: inline-flex; align-items: center; justify-content: center; }
+.chat-glyph { display: inline-flex; align-items: center; color: var(--accent); }
+.chat-glyph .ico { width: 15px; height: 15px; }
+.pill-btn.tiny .ico { width: 12px; height: 12px; }

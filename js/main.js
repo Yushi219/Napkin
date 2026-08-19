@@ -16,6 +16,12 @@ import * as ui from './ui.js';
 
 const $ = id => document.getElementById(id);
 
+// the two marks the build button swaps between, drawn like every other icon
+const ICON = {
+  arrow: '<svg class="ico" viewBox="0 0 24 24"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg>',
+  redo: '<svg class="ico" viewBox="0 0 24 24"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M18.6 3.2v3.6H15"/></svg>',
+};
+
 let built = false;
 let styleId = 'photo';
 let refDataURL = null;
@@ -214,7 +220,7 @@ function enterWorkspace(msg) {
   built = true;
   document.body.classList.remove('landing');
   document.body.classList.add('workspace');
-  $('btn-build').textContent = 'Update ↻';
+  $('btn-build').innerHTML = 'Update' + ICON.redo;
   setTimeout(() => refresh(), 500);   // rebuild after panes unfold so canvases have size
   setTimeout(() => refresh(), 1100);
   if (msg) ui.toast(msg);
@@ -901,7 +907,7 @@ function wire() {
     document.body.classList.remove('workspace');
     document.body.classList.add('landing');
     built = false;
-    $('btn-build').textContent = 'Build it →';
+    $('btn-build').innerHTML = 'Build it' + ICON.arrow;
     clearSelection();
     clearAnnotation();
     // the working panes belong to the workspace, not the front page
@@ -979,6 +985,7 @@ function wire() {
     }
   }
   function setFullscreen(on) {
+    if (on) closeSheets();     // nothing should sit over a fullscreen model
     document.body.classList.toggle('fs', on);
     placeCamPane();
     fitFrame();
