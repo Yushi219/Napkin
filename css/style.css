@@ -1162,3 +1162,29 @@ body.workspace .splitter#split-rail { display: none; }
   #params-panel .pgroup { grid-template-columns: 1fr; }
   #metric-sheet .metric { flex: 1 1 44%; }
 }
+
+/* ---- sheets: tidy rows instead of scattered chips ---- */
+@media (pointer: coarse) and (max-width: 1200px) {
+  #site-bar, #model-controls, #metric-sheet {
+    justify-content: flex-start; align-content: flex-start;
+    row-gap: 8px; column-gap: 6px;
+  }
+  /* each control keeps its natural width and the row reads left to right */
+  #site-bar > * { flex: 0 0 auto; }
+  #site-bar #view-modes { flex: 1 1 100%; justify-content: flex-start; }
+  #site-bar select {
+    flex: 1 1 46%; min-width: 130px;
+    background: #ffffffcc; border: 1px solid var(--line); border-radius: 14px;
+    padding: 7px 10px;
+  }
+  #site-bar .seg { flex: 1 1 46%; }
+  #site-bar .seg button { flex: 1; }
+  #sun-hour { flex: 1 1 62%; min-width: 120px; }
+  #sun-readout { flex: 0 0 auto; font-size: 11px; }
+  #site-bar .pill-btn { flex: 0 0 auto; }
+  #model-controls .pill-btn { flex: 1 1 30%; min-width: 96px; }
+  .sheet-empty { flex: 1 1 100%; text-align: center; color: var(--faint); font-size: 12px; padding: 10px 0; }
+
+  /* the tab bar shows which pane you are in */
+  #phone-bar [data-sheet="napkin"].active { color: var(--accent); background: var(--accent-soft); }
+}

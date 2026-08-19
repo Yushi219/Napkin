@@ -978,27 +978,41 @@ function wire() {
     SHEETS.forEach(k => document.body.classList.remove('sheet-' + k));
     document.querySelectorAll('#phone-bar button').forEach(b => b.classList.remove('active'));
   }
+  const SHEET_EL = { scene: 'site-bar', tools: 'model-controls', params: 'params-panel', chat: 'chatbar', metric: 'metric-sheet' };
+
   function openSheet(kind) {
     const already = document.body.classList.contains('sheet-' + kind);
     closeSheets();
     if (already) return;
-    document.body.classList.add('sheet-' + kind);
-    document.querySelector(`#phone-bar [data-sheet="${kind}"]`)?.classList.add('active');
+
+    // Every tab except Napkin is about the building, so bring the model
+    // forward first — otherwise the controls would act on a hidden view.
+    if (document.body.classList.contains('pane-sketch')) showPane('model');
+    document.querySelector('#phone-bar [data-sheet="napkin"]')?.classList.remove('active');
+
+    // The panels are display:none until first use on desktop; a sheet slides
+    // rather than toggles, so it has to be displayed before it can move.
+    const el = $(SHEET_EL[kind]);
+    el?.classList.remove('hidden');
+
     if (kind === 'params') syncParams();
     if (kind === 'metric') {
       const sheet = $('metric-sheet');
       sheet.innerHTML = '';
       [...$('metric-rail').children].forEach(c => sheet.appendChild(c.cloneNode(true)));
+      if (!sheet.children.length) sheet.innerHTML = '<div class="sheet-empty">Build something and the numbers appear here.</div>';
     }
+
+    document.body.classList.add('sheet-' + kind);
+    document.querySelector(`#phone-bar [data-sheet="${kind}"]`)?.classList.add('active');
     if (kind === 'chat') setTimeout(() => $('chat-input').focus(), 260);
   }
   document.querySelectorAll('#phone-bar button').forEach(b => b.addEventListener('click', () => {
     const kind = b.dataset.sheet;
     if (kind === 'napkin') {
       closeSheets();
-      const onSketch = document.body.classList.contains('pane-sketch');
-      showPane(onSketch ? 'model' : 'sketch');
-      b.classList.toggle('active', !onSketch);
+      showPane('sketch');
+      b.classList.add('active');
       return;
     }
     openSheet(kind);
