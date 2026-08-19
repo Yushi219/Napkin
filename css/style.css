@@ -1019,3 +1019,89 @@ body.workspace .splitter#split-rail { display: none; }
 #render-strip img:hover { border-color: var(--accent); }
 #render-strip img.active { border-color: var(--ink); }
 #ref-chip { font-size: 10.5px; color: var(--accent); white-space: nowrap; }
+
+/* the images actually sent to the render model */
+.cmsg.ai.sent-images {
+  display: flex; gap: 8px; background: none; border: none; padding: 2px 0; max-width: 100%;
+}
+.cmsg.ai.sent-images figure { margin: 0; text-align: center; }
+.cmsg.ai.sent-images img {
+  width: 92px; height: 68px; object-fit: cover; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--paper);
+}
+.cmsg.ai.sent-images figcaption {
+  font-size: 8.5px; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--faint); margin-top: 3px; max-width: 92px;
+}
+
+/* ================= Unified tab bar (phone + tablet) ================= */
+#phone-bar button svg {
+  width: 21px; height: 21px; fill: none;
+  stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+#phone-bar button span { font-size: 9.5px; letter-spacing: .2px; }
+#metric-sheet { display: none; }
+
+@media (pointer: coarse) {
+  /* the model window is sacred: sheets sit under it, never over it */
+  #phone-bar { display: flex; }
+  body.landing #phone-bar { display: none; }
+  body.workspace #mobile-tabs { display: none; }
+
+  #phone-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    display: flex; align-items: stretch; gap: 2px;
+    background: #fffdf8f7; backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+  }
+  #phone-bar button {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: none; cursor: pointer; padding: 6px 2px;
+    border-radius: 12px; color: var(--muted); font-family: var(--font-ui);
+    transition: color .15s, background .15s;
+  }
+  #phone-bar button.active { color: var(--accent); background: var(--accent-soft); }
+  #phone-bar .pb-say { color: var(--ink); }
+  #phone-bar .pb-say.active { color: var(--accent); }
+
+  /* every panel is the same sheet */
+  #site-bar, #model-controls, #params-panel, #chatbar, #metric-sheet {
+    position: fixed; left: 0; right: 0; top: auto;
+    bottom: calc(60px + env(safe-area-inset-bottom));
+    width: auto; max-width: none; z-index: 39;
+    transform: translateY(118%); transition: transform .3s cubic-bezier(.2,.85,.3,1);
+    background: var(--panel);
+    border: none; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
+    box-shadow: 0 -10px 34px #00000020;
+    max-height: 46vh; overflow-y: auto; scrollbar-width: none;
+    padding: 16px 14px 14px; margin: 0;
+    display: flex; flex-direction: column; gap: 8px; align-items: stretch;
+  }
+  #site-bar::before, #model-controls::before, #params-panel::before,
+  #chatbar::before, #metric-sheet::before {
+    content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 2px; background: var(--line-soft);
+  }
+  body.sheet-scene #site-bar, body.sheet-tools #model-controls,
+  body.sheet-params #params-panel, body.sheet-chat #chatbar,
+  body.sheet-metric #metric-sheet { transform: translateY(0); }
+
+  /* scene sheet also carries the view modes */
+  #view-modes { padding: 0; gap: 4px; }
+  body.sheet-scene #site-bar #view-modes-slot { display: flex; gap: 4px; }
+  #site-bar .sb-sep, #site-bar .sb-break { display: none; }
+  #site-bar select, #site-bar .seg, #sun-hour { width: 100%; }
+  #site-bar .seg.small button { flex: 1; padding: 9px 4px; }
+  #model-controls { flex-direction: row; flex-wrap: wrap; }
+  #model-controls .pill-btn { flex: 1 1 46%; justify-content: center; padding: 11px 8px; }
+  #chat-log { max-height: 28vh; flex: none; }
+  #chatbar .chat-row { flex-wrap: wrap; gap: 6px; }
+  #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; padding: 11px 12px; }
+  .chat-glyph { display: none; }
+  #chatbar .build-btn.small { flex: 1; padding: 11px 8px; }
+  #metric-sheet { flex-direction: row; flex-wrap: wrap; gap: 8px; padding-top: 20px; }
+  #metric-sheet .metric { flex: 1 1 30%; }
+  .drawer-tab { display: none; }
+  #viewport { padding-bottom: 0; }
+}

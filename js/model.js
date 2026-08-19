@@ -483,7 +483,7 @@ export const SETTINGS = [
     id: 'downtown', label: 'Downtown core',
     note: 'Hemmed in by towers, narrow streets, almost no green',
     ground: 'paved', terrain: 'flat', plot: 42, roads: 'grid', roadW: 15,
-    fabric: { style: 'tower', rings: 3, count: 13, near: 96, gap: 0.1, hMin: 55, hMax: 165, wMin: 22, wMax: 40 },
+    fabric: { style: 'tower', rings: 3, count: 13, near: 96, gap: 0.1, hMin: 18, hMax: 150, wMin: 20, wMax: 42, mix: 'skyline' },
     planting: { kind: 'street', density: 0.35 }, water: 'none', props: 'urban',
   },
   {
@@ -670,8 +670,13 @@ function buildSiteContext() {
   };
   const RW = L.roadW;
   if (L.roads === 'grid') {
-    strip(1100, RW, 0, L.plot + 22); strip(1100, RW, 0, -(L.plot + 22));
-    strip(RW, 1100, L.plot + 26, 0); strip(RW, 1100, -(L.plot + 26), 0);
+    // a city grid is never perfectly square: blocks differ, one street runs askew
+    strip(1100, RW, 0, L.plot + 22);
+    strip(1100, RW * 0.8, 0, -(L.plot + 30 + rnd(1) * 16));
+    strip(RW, 1100, L.plot + 26 + rnd(2) * 14, 0);
+    strip(RW * 0.75, 1100, -(L.plot + 24), 0);
+    strip(900, RW * 0.7, 40, -(L.plot + 120), 0.22);       // the diagonal avenue
+    strip(RW * 0.6, 700, -(L.plot + 150), 60, 0.12);
   } else if (L.roads === 'loop') {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(L.plot + 26, RW / 2, 6, 60), roadMat);
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.16; ring.scale.z = 0.35;
@@ -780,7 +785,17 @@ function buildSiteContext() {
       const gy = terrainHeight(x, z, L);
       const w = F.wMin + rnd(n + 1) * (F.wMax - F.wMin);
       const d = F.wMin * 0.8 + rnd(n + 2) * (F.wMax - F.wMin) * 0.9;
-      const h = F.hMin + Math.pow(rnd(n + 3), 1.5) * (F.hMax - F.hMin);
+      // A skyline is mostly mid-rise with a few peaks — a flat power curve
+      // would wall the site in. Nearer rings also stay lower so the building
+      // being designed is never completely hidden.
+      const peak = rnd(n + 8);
+      const shape = F.mix === 'skyline'
+        ? (peak > 0.86 ? 0.75 + rnd(n + 9) * 0.25         // the occasional tower
+          : peak > 0.6 ? 0.32 + rnd(n + 9) * 0.3          // mid-rise
+          : 0.06 + rnd(n + 9) * 0.24)                     // low blocks
+        : Math.pow(rnd(n + 3), 1.5);
+      const ringDamp = ring === 1 ? 0.55 : ring === 2 ? 0.85 : 1;
+      const h = F.hMin + shape * (F.hMax - F.hMin) * ringDamp;
       const rot = rnd(n + 4) * 0.5 - 0.25;
 
       if (F.style === 'house') {
@@ -1547,9 +1562,31 @@ export function rebuild() {
   rebuildWire(poly);
 }
 
-export function modelSnapshot() {
+// The render's input image. Never trust the on-screen canvas size: a narrow
+// pane or a hidden tab would hand the image model a thumbnail it cannot read
+// the massing from. Render offscreen at a fixed, generous resolution instead.
+export function modelSnapshot(longEdge = 1280) {
+  if (!renderer || !camera) return null;
+  const el = renderer.domElement;
+  const w0 = el.width, h0 = el.height;
+  // a hidden or oddly shaped pane must not produce a sliver of an image
+  let aspect = (el.clientWidth || 0) / (el.clientHeight || 1);
+  if (!Number.isFinite(aspect) || aspect < 0.45 || aspect > 3) aspect = 4 / 3;
+  const w = Math.round(aspect >= 1 ? longEdge : longEdge * aspect);
+  const h = Math.round(aspect >= 1 ? longEdge / aspect : longEdge);
+  const dpr0 = renderer.getPixelRatio();
+  renderer.setPixelRatio(1);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
   renderer.render(scene, camera);
-  return renderer.domElement.toDataURL('image/png');
+  const url = el.toDataURL('image/png');
+  renderer.setPixelRatio(dpr0);
+  renderer.setSize(w0 / dpr0, h0 / dpr0, false);
+  camera.aspect = (el.clientWidth || 4) / (el.clientHeight || 3);
+  camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
+  return url;
 }
 
 // ---------------- reverse: imported 3D mesh ----------------

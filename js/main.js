@@ -523,7 +523,11 @@ async function doRender(userLine = '') {
     if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg);
     const snapshot = model.modelSnapshot();
     renderCamera = model.getCameraPose();       // lock: the render belongs to this view
-    done(s1, `① Input image captured — ${model.state.archetype === 'tower' ? 'parametric tower' : (model.state.masses?.length || 0) + ' volumes'}, view locked.`);
+    const shotSize = await new Promise(res => { const i = new Image(); i.onload = () => res(`${i.width}\u00d7${i.height}`); i.src = snapshot; });
+    done(s1, `\u2460 Input image captured at ${shotSize} — this is the structure the render must follow.`);
+    ui.addChatImages(refDataURL
+      ? [{ url: snapshot, label: 'IMAGE 1 · your model (structure)' }, { url: refDataURL, label: 'IMAGE 2 · your reference (style only)' }]
+      : [{ url: snapshot, label: 'IMAGE 1 · your model (structure)' }]);
 
     // ---- 2. one sentence becomes a full brief ----
     let brief = userLine;
@@ -592,7 +596,7 @@ async function doRender(userLine = '') {
 
     // ---- 4. overlay on the model, camera pinned, compare ready ----
     showRender(url, { local });
-    ui.addToStrip(url, u => showRender(u, { local }));
+    ui.addToStrip(url, u => { showRender(u, { local }); setCompare(true); });
     if (!local) {
       const s4 = step('④ Laid over the model — drag the divider to compare.', '');
       setCompare(true);
@@ -822,6 +826,42 @@ function wire() {
     e.target.value = '';
   });
 
+  // Dictation. Speech recognition is a browser feature, no key needed; Safari
+  // and Chrome expose it under different names and it needs a secure origin.
+  (() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const btn = $('btn-mic');
+    if (!btn) return;
+    if (!SR) { btn.style.display = 'none'; return; }
+    let rec = null;
+    btn.addEventListener('click', () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR();
+      rec.lang = navigator.language || 'en-US';
+      rec.interimResults = true;
+      rec.continuous = false;
+      const input = $('chat-input');
+      const before = input.value ? input.value.trim() + ' ' : '';
+      btn.classList.add('active');
+      btn.textContent = '\u25cf';
+      rec.onresult = e => {
+        input.value = before + [...e.results].map(r => r[0].transcript).join(' ').trim();
+      };
+      rec.onerror = ev => {
+        ui.addChatMsg('ai', ev.error === 'not-allowed'
+          ? 'Microphone blocked — allow it in the browser, and note dictation needs https or localhost.'
+          : `Dictation stopped: ${ev.error}`, 'err');
+      };
+      rec.onend = () => {
+        rec = null;
+        btn.classList.remove('active');
+        btn.textContent = '\ud83c\udfa4';
+        input.focus();
+      };
+      try { rec.start(); } catch { rec = null; btn.classList.remove('active'); btn.textContent = '\ud83c\udfa4'; }
+    });
+  })();
+
   $('chat-send').addEventListener('click', onChat);
   $('chat-render').addEventListener('click', () => {
     const line = $('chat-input').value.trim();
@@ -887,6 +927,11 @@ function wire() {
     });
   };
 
+  if (isTouch()) {
+    // one home for everything that changes how the scene looks
+    $('site-bar').prepend($('view-modes'));
+  }
+
   cycler($('btn-landscape'),
     () => {
       if (!$('btn-context').classList.contains('active')) {
@@ -905,7 +950,7 @@ function wire() {
 
   // Phone: one bottom sheet at a time, raised from the work bar. Tapping the
   // same button again, or anywhere on the model, puts it away.
-  const SHEETS = ['scene', 'tools', 'params', 'chat'];
+  const SHEETS = ['scene', 'tools', 'params', 'chat', 'metric'];
   function closeSheets() {
     SHEETS.forEach(k => document.body.classList.remove('sheet-' + k));
     document.querySelectorAll('#phone-bar button').forEach(b => b.classList.remove('active'));
@@ -917,6 +962,11 @@ function wire() {
     document.body.classList.add('sheet-' + kind);
     document.querySelector(`#phone-bar [data-sheet="${kind}"]`)?.classList.add('active');
     if (kind === 'params') syncParams();
+    if (kind === 'metric') {
+      const sheet = $('metric-sheet');
+      sheet.innerHTML = '';
+      [...$('metric-rail').children].forEach(c => sheet.appendChild(c.cloneNode(true)));
+    }
     if (kind === 'chat') setTimeout(() => $('chat-input').focus(), 260);
   }
   document.querySelectorAll('#phone-bar button').forEach(b => b.addEventListener('click', () => {

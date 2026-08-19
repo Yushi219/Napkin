@@ -72,6 +72,20 @@ export function addChatMsg(who, text, cls = '') {
   return d;
 }
 
+// What actually went to the image model, so a bad render can be diagnosed
+// instead of guessed at.
+export function addChatImages(items) {
+  const log = $('chat-log');
+  log.classList.remove('hidden');
+  const d = document.createElement('div');
+  d.className = 'cmsg ai sent-images';
+  d.innerHTML = items.map(it =>
+    `<figure><img src="${it.url}" alt="${esc(it.label)}" /><figcaption>${esc(it.label)}</figcaption></figure>`).join('');
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
 // ---------- parameters panel ----------
 // Full parameter desk for the torso-tower archetype (ported from CONCORD).
 const TOWER_PARAMS = [

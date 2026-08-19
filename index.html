@@ -19,22 +19,22 @@
   "imports": {
     "three": "./js/vendor/three.module.js",
     "three/addons/": "./js/vendor/addons/",
-    "./js/chat.js": "./js/chat.js?v=20260819d",
-    "./js/device.js": "./js/device.js?v=20260819d",
-    "./js/examples.js": "./js/examples.js?v=20260819d",
-    "./js/gallery.js": "./js/gallery.js?v=20260819d",
-    "./js/hands.js": "./js/hands.js?v=20260819d",
-    "./js/interpret.js": "./js/interpret.js?v=20260819d",
-    "./js/main.js": "./js/main.js?v=20260819d",
-    "./js/metrics.js": "./js/metrics.js?v=20260819d",
-    "./js/model.js": "./js/model.js?v=20260819d",
-    "./js/render.js": "./js/render.js?v=20260819d",
-    "./js/sketch.js": "./js/sketch.js?v=20260819d",
-    "./js/solar.js": "./js/solar.js?v=20260819d",
-    "./js/splitters.js": "./js/splitters.js?v=20260819d",
-    "./js/tower.js": "./js/tower.js?v=20260819d",
-    "./js/ui.js": "./js/ui.js?v=20260819d",
-    "./js/versions.js": "./js/versions.js?v=20260819d"
+    "./js/chat.js": "./js/chat.js?v=20260819e",
+    "./js/device.js": "./js/device.js?v=20260819e",
+    "./js/examples.js": "./js/examples.js?v=20260819e",
+    "./js/gallery.js": "./js/gallery.js?v=20260819e",
+    "./js/hands.js": "./js/hands.js?v=20260819e",
+    "./js/interpret.js": "./js/interpret.js?v=20260819e",
+    "./js/main.js": "./js/main.js?v=20260819e",
+    "./js/metrics.js": "./js/metrics.js?v=20260819e",
+    "./js/model.js": "./js/model.js?v=20260819e",
+    "./js/render.js": "./js/render.js?v=20260819e",
+    "./js/sketch.js": "./js/sketch.js?v=20260819e",
+    "./js/solar.js": "./js/solar.js?v=20260819e",
+    "./js/splitters.js": "./js/splitters.js?v=20260819e",
+    "./js/tower.js": "./js/tower.js?v=20260819e",
+    "./js/ui.js": "./js/ui.js?v=20260819e",
+    "./js/versions.js": "./js/versions.js?v=20260819e"
   }
 }
 </script>
@@ -229,6 +229,7 @@ if (location.protocol === 'file:') {
   <div class="chat-row">
     <span class="chat-glyph">✎</span>
     <input id="chat-input" type="text" placeholder="Say it once — “add a glass podium”, or for the render: “rainy dusk, brick, people”" maxlength="240" />
+    <button id="btn-mic" class="pill-btn" title="Dictate — speech to text">&#127908;</button>
     <button id="chat-send" class="build-btn small" title="Change the building">Modify ⟶</button>
     <label class="pill-btn" for="ref-input" id="ref-label" title="Style reference for the render — geometry always comes from your model">Ref</label>
     <input id="ref-input" type="file" accept="image/*" class="hidden" />
@@ -237,14 +238,16 @@ if (location.protocol === 'file:') {
   </div>
 </footer>
 
-<nav id="phone-bar" aria-label="Phone controls">
-  <button data-sheet="napkin"><span class="pb-icon">✎</span>Napkin</button>
-  <button data-sheet="scene"><span class="pb-icon">☀</span>Scene</button>
-  <button data-sheet="tools"><span class="pb-icon">⚒</span>Tools</button>
-  <button data-sheet="params"><span class="pb-icon">⚌</span>Params</button>
-  <button data-sheet="chat" class="pb-say"><span class="pb-icon">✦</span>Say it</button>
+<nav id="phone-bar" aria-label="Workspace tabs">
+  <button data-sheet="napkin" aria-label="Napkin"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M9 12h6M9 16h4"/></svg><span>Napkin</span></button>
+  <button data-sheet="scene" aria-label="Scene"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M6 6l1.5 1.5M16.5 16.5L18 18M18 6l-1.5 1.5M7.5 16.5L6 18"/></svg><span>Scene</span></button>
+  <button data-sheet="tools" aria-label="Tools"><svg viewBox="0 0 24 24"><path d="M14 6a3.5 3.5 0 1 0 4 4l3 3-4 4-3-3a3.5 3.5 0 1 0-4-4z"/><path d="M9 15l-4 4"/></svg><span>Tools</span></button>
+  <button data-sheet="params" aria-label="Parameters"><svg viewBox="0 0 24 24"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2"/><circle cx="10" cy="16" r="2"/></svg><span>Params</span></button>
+  <button data-sheet="metric" aria-label="Metrics"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span>Metrics</span></button>
+  <button data-sheet="chat" class="pb-say" aria-label="Say it"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.2-6.4"/><path d="M12 8v4l3 2"/></svg><span>Say it</span></button>
 </nav>
 
+<div id="metric-sheet" class="hidden"></div>
 <div id="popover" class="hidden"></div>
 <div id="modal-root" class="hidden">
   <div id="modal-backdrop"></div>
@@ -252,7 +255,7 @@ if (location.protocol === 'file:') {
 </div>
 <div id="toast"></div>
 
-<script src="js/config.local.js?v=20260819d"></script>
-<script type="module" src="js/main.js?v=20260819d"></script>
+<script src="js/config.local.js?v=20260819e"></script>
+<script type="module" src="js/main.js?v=20260819e"></script>
 </body>
 </html>

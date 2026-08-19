@@ -146,6 +146,8 @@ export async function renderImage({ snapshot, styleId, userPrompt, refDataURL, t
     ? userPrompt
     : `Re-render the INPUT IMAGE as: ${style.prompt}. The building is a ${typeLabel.toLowerCase()}.${userPrompt ? ` Art direction: ${userPrompt}.` : ''}`;
   const brief = [
+    'IMAGE 1 IS THE BUILDING. Reproduce its silhouette, storey count, proportions, setbacks and camera angle exactly. Do not invent a different building. If the prompt and IMAGE 1 disagree about form, IMAGE 1 wins.',
+    '',
     core,
     '',
     'Image role rules:',
@@ -153,7 +155,7 @@ export async function renderImage({ snapshot, styleId, userPrompt, refDataURL, t
     '- The input is an untextured grey/clay STUDY MODEL, not a finished building. Its flat placeholder surfaces MUST be replaced with real architectural materials, glazing with reflections, visible floor levels and mullions.',
     '- The input has no context: ADD a believable site — ground plane, neighbouring buildings, sky, planting, and a few people for scale — unless the prompt says otherwise.',
     '- Do NOT return the input image unchanged, and do not return a grey clay model. The result must read as a finished architectural visualization.',
-    refDataURL ? '- Image 2: REFERENCE ONLY. Borrow material palette, lighting, mood and quality from it. Do NOT use its geometry, camera or composition.' : '',
+    refDataURL ? '- Image 2: STYLE REFERENCE ONLY — it is NOT the building. Take only its palette, materials, light and photographic mood. Copying its shape, height, window grid, camera or composition is a failure.' : '',
     '- Keep the final image the same aspect ratio as the INPUT IMAGE.',
   ].filter(Boolean).join('\n');
 
@@ -161,11 +163,11 @@ export async function renderImage({ snapshot, styleId, userPrompt, refDataURL, t
   if (key) {
     const parts = [
       { text: brief },
-      { text: 'INPUT IMAGE: use as the primary geometry, camera and massing. Preserve exactly.' },
+      { text: 'IMAGE 1 — THE BUILDING TO RENDER. Its geometry, storey count, proportions and camera are the ground truth and must be preserved exactly.' },
       { inline_data: { mime_type: 'image/png', data: strip64(snapshot) } },
     ];
     if (refDataURL) {
-      parts.push({ text: 'REFERENCE ONLY: style, materials, lighting, mood — never geometry.' });
+      parts.push({ text: 'IMAGE 2 — STYLE REFERENCE ONLY. Not the building. Palette, materials, light and mood only; never its shape, height or camera.' });
       parts.push({ inline_data: { mime_type: mimeOf(refDataURL), data: strip64(refDataURL) } });
     }
     try {
