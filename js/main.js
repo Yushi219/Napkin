@@ -275,7 +275,10 @@ async function build() {
       if (v.camera) pendingCamera = v.camera;
     } catch (e) {
       console.warn('vision read failed → local reader', e);
-      ui.addChatMsg('ai', `Claude read failed (${String(e.message).slice(0, 60)}) — using the local silhouette reader.`, 'err');
+      const msg = hasClaude()
+        ? `Claude read failed (${String(e.message).slice(0, 60)}) — using the local silhouette reader.`
+        : 'This device has no Anthropic key, so the sketch was read by the local silhouette engine. Add a key in ⚙ to have Claude read it properly — it stays in this browser only.';
+      ui.addChatMsg('ai', msg, 'err');
     }
     $('btn-build').disabled = false;
   }
@@ -573,7 +576,13 @@ async function doRender(userLine = '') {
     } else {
       s3.className = 'cmsg ai err';
       if (!hasGemini()) {
-        s3.textContent = '③ No Gemini key on this build, so nothing was sent to the image model — what you see is a local tint of the model, not a render. Add a key in ⚙ (or open the local copy that has one).';
+        s3.textContent = '③ This device has no Gemini key, so nothing was sent to the image model — what you see is a local tint, not a render. Keys cannot ship with a public site, so paste yours once here; it stays in this browser only.';
+        const btn = document.createElement('button');
+        btn.className = 'build-btn small';
+        btn.style.cssText = 'margin-top:8px;width:100%';
+        btn.textContent = 'Add your keys →';
+        btn.onclick = () => ui.settingsModal(() => ui.toast('Saved on this device. Press Render again.'));
+        s3.appendChild(btn);
       } else if (/429|quota/i.test(engine)) {
         s3.textContent = '③ Google refused with 429 — the key is valid but its project has no image-generation quota. Turn on billing for that project at aistudio.google.com, then press Render again. Showing a local tint meanwhile.';
       } else {
