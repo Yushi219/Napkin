@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="NAPKIN" />
+<meta name="theme-color" content="#fbfaf5" />
+<title>NAPKIN</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f3efe6'/%3E%3Cpath d='M8 24 L14 9 L20 24 M11 18 H17' stroke='%232b2926' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@500;600&family=Great+Vibes&family=Pinyon+Script&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+<script type="importmap">
+{ "imports": {
+  "three": "./js/vendor/three.module.js",
+  "three/addons/": "./js/vendor/addons/"
+} }
+</script>
+</head>
+<body class="landing">
+<script>
+if (location.protocol === 'file:') {
+  document.addEventListener('DOMContentLoaded', function () {
+    document.body.innerHTML =
+      '<div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;font-family:Georgia,serif;background:#fbfaf5;color:#26231e;text-align:center;padding:24px">' +
+      '<div style="font-size:34px">One more step</div>' +
+      '<div style="font-size:15px;line-height:1.8;color:#6b6455;max-width:520px">NAPKIN needs a local server.<br/><br/>' +
+      '<b style="color:#26231e">Double-click <code style="background:#eee8d9;padding:2px 8px;border-radius:6px">start.bat</code> in the folder above this one</b><br/>' +
+      'then open <a href="http://localhost:8137/Napkin/" style="color:#bd5f3d">http://localhost:8137/Napkin/</a></div></div>';
+  });
+}
+</script>
+
+<header id="dash">
+  <div class="brand">
+    <button id="btn-home" title="Back to the napkin">&#8592;</button>
+    <span class="brand-name">NAPKIN</span>
+  </div>
+  <div class="dash-type">
+    <label>Program</label>
+    <select id="type-select">
+      <option value="office" selected>Office</option>
+      <option value="laboratory">Laboratory</option>
+      <option value="residential">Residential</option>
+      <option value="hotel">Hotel</option>
+      <option value="school">School</option>
+      <option value="museum">Museum</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <input id="type-custom" type="text" placeholder="e.g. vertical farm" class="hidden" maxlength="40" />
+  </div>
+  <div id="metric-rail"></div>
+  <div class="dash-actions">
+    <span id="dash-signature"></span>
+    <button id="btn-versions" class="pill-btn" title="Version stream">v<span id="version-count">0</span></button>
+    <button id="btn-settings" class="pill-btn" title="Settings">⚙</button>
+  </div>
+</header>
+
+<main id="stage">
+  <section id="left-col">
+    <div id="napkin-wrap">
+      <div id="hero">
+        <h1>
+          <span class="h-1">Too early for Revit.</span>
+          <span class="h-2">Perfect time for a napkin.
+            <svg class="h-swoosh" viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M3 9 C 60 2, 120 12, 180 6 S 270 3, 297 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+            </svg>
+          </span>
+        </h1>
+        <div id="hero-name">
+          <span class="sign-guide">sign your napkin</span>
+          <div class="sign-fields">
+            <input id="author-input" type="text" placeholder="name" maxlength="28" autocomplete="off" />
+            <input id="author-date" type="text" placeholder="date" maxlength="18" autocomplete="off" />
+          </div>
+          <span id="hero-sig"></span>
+        </div>
+      </div>
+      <div id="napkin">
+        <canvas id="sketch-canvas"></canvas>
+        <div id="napkin-sig"><span class="ns-name"></span><span class="ns-date"></span></div>
+      </div>
+      <div id="sketch-tools">
+        <div class="seg">
+          <button id="tool-pen" class="active" title="Pen">✎</button>
+          <button id="tool-erase" title="Eraser">◌</button>
+          <button id="tool-undo" title="Undo stroke">↺</button>
+          <button id="tool-clear" title="Start over">✕</button>
+        </div>
+        <label class="pill-btn" for="photo-input" title="Upload a photo of a real napkin">Photo</label>
+        <input id="photo-input" type="file" accept="image/*" class="hidden" />
+        <select id="kind-select" title="What are you drawing? It sets storey heights and the metric model">
+          <option value="office">Office tower</option>
+          <option value="museum">Museum</option>
+          <option value="residential">Housing</option>
+          <option value="laboratory">Laboratory</option>
+          <option value="hotel">Hotel</option>
+          <option value="school">School</option>
+          <option value="custom">Something else…</option>
+        </select>
+        <button id="btn-build" class="build-btn">Build it →</button>
+      </div>
+      <div id="concept-pane" class="hidden">
+        <span class="pane-tag">concept pass</span>
+        <img id="concept-img" alt="concept" />
+      </div>
+      <div id="wire-pane" class="hidden"><canvas id="wire-canvas"></canvas></div>
+      <div id="cam-pane" class="hidden">
+        <span class="pane-tag">hand tracking</span>
+        <canvas id="cam-canvas" width="320" height="240"></canvas>
+        <div id="cam-legend">
+          <span><i class="g-pinch"></i> pinch = grab a volume</span>
+          <span><i class="g-open"></i> open palm = orbit</span>
+          <span><i class="g-fist"></i> fist = zoom</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <nav id="mobile-tabs">
+    <button data-pane="sketch" class="active">Napkin</button>
+    <button data-pane="model">Model</button>
+    <button data-pane="metrics">Data</button>
+  </nav>
+
+  <section id="mid-col" class="folded">
+    <div class="splitter v" id="split-main" title="Drag to resize · double-click to reset"></div>
+    <div id="view-modes">
+      <button class="vmode active" data-mode="white">White</button>
+      <button class="vmode" data-mode="wood">Wood</button>
+      <button class="vmode" data-mode="render">AI render</button>
+    </div>
+
+    <div id="viewport">
+      <canvas id="model-canvas"></canvas>
+      <canvas id="anno-canvas"></canvas>
+      <canvas id="hand-canvas"></canvas>
+      <div id="render-layer" class="hidden">
+        <img id="render-img" alt="render" />
+        <div id="compare-divider" class="hidden"><span class="cd-grip">‖</span></div>
+      </div>
+      <div id="render-veil" class="hidden"><div class="veil-spin"></div><span id="veil-label">rendering…</span></div>
+      <div id="model-badge"></div>
+      <div id="sel-bar" class="hidden">
+        <span class="sel-label">pointing at</span>
+        <span id="sel-chips"></span>
+        <button id="sel-clear" title="Clear selection">✕</button>
+      </div>
+      <video id="hand-video" playsinline muted class="hidden"></video>
+
+      <div id="site-bar">
+        <select id="site-select" title="Site — drives real sun geometry"></select>
+        <span class="sb-sep"></span>
+        <div class="seg small" id="season-seg">
+          <button data-season="winter">Dec</button>
+          <button data-season="equinox" class="active">Mar</button>
+          <button data-season="summer">Jun</button>
+        </div>
+        <input id="sun-hour" type="range" min="0" max="24" step="0.25" value="13" title="Time of day" />
+        <span id="sun-readout" class="mono">13:00</span>
+        <span class="sb-break"></span>
+        <div class="seg small" id="detail-seg">
+          <button data-detail="massing">Massing</button>
+          <button data-detail="floors" class="active">Floors</button>
+          <button data-detail="detail">Detailed</button>
+        </div>
+        <button id="btn-context" class="pill-btn tiny active" title="Show city context">City</button>
+        <button id="btn-landscape" class="pill-btn tiny env-trigger" title="Click for the next setting · double-click for the default">Downtown core</button>
+        <button id="btn-weather" class="pill-btn tiny env-trigger" title="Click for the next sky · double-click for the default">Clear day</button>
+        <button id="btn-spin" class="pill-btn tiny" title="Slow orbit">orbit</button>
+      </div>
+    </div>
+
+    <div id="model-controls">
+      <button id="btn-hand" class="pill-btn" title="Hand control — pinch grabs, open palm orbits, fist zooms">✋ Hands</button>
+      <button id="btn-anno" class="pill-btn" title="Red pen — circle a part of the model and say what to change">✏ Note</button>
+      <button id="btn-params" class="pill-btn" title="Parameters">⚌ Params</button>
+      <button id="btn-compare" class="pill-btn hidden" title="Compare model against render">◐ Compare</button>
+      <button id="btn-live" class="pill-btn" title="Live-link to Rhino">⟳ Live</button>
+      <label class="pill-btn" for="obj-input" title="Import a 3D model (.obj / .glb)">⇪ 3D</label>
+      <input id="obj-input" type="file" accept=".obj,.glb,.gltf" class="hidden" />
+      <label class="pill-btn" for="ref-input" title="Style reference image for the render">🖼 Ref</label>
+      <input id="ref-input" type="file" accept="image/*" class="hidden" />
+      <span id="ref-chip" class="hidden"></span>
+      <label class="pill-btn" for="reverse-input" title="Reverse: upload a rendering — I decompose it into 3D massing">⇪ Decompose</label>
+      <input id="reverse-input" type="file" accept="image/*" class="hidden" />
+      <button id="btn-rhino" class="pill-btn" title="Download .3dm — opens straight in Rhino">⇩ Rhino</button>
+    </div>
+
+    <div id="params-panel" class="hidden"></div>
+    <div class="splitter v" id="split-params" title="Drag to resize · double-click to reset"></div>
+    <div id="render-strip"></div>
+  </section>
+  <section id="gallery-wrap">
+    <div class="splitter v" id="split-rail" title="Drag to resize · double-click to reset"></div>
+    <div class="gal-head">
+      <span class="gal-title">Start from one of these</span>
+      <span class="gal-hint">hover to browse</span>
+    </div>
+    <div id="gallery"></div>
+  </section>
+</main>
+
+<footer id="chatbar" class="folded">
+  <div class="splitter h" id="split-chat" title="Drag to resize · double-click to reset"></div>
+  <div id="chat-log" class="hidden"></div>
+  <div class="chat-row">
+    <span class="chat-glyph">✎</span>
+    <input id="chat-input" type="text" placeholder="Say it once — “add a glass podium”, or for the render: “rainy dusk, brick, people”" maxlength="240" />
+    <button id="chat-send" class="build-btn small" title="Change the building">Modify ⟶</button>
+    <button id="chat-render" class="build-btn small render" title="Render this view with your words">Render ✦</button>
+  </div>
+</footer>
+
+<div id="popover" class="hidden"></div>
+<div id="modal-root" class="hidden">
+  <div id="modal-backdrop"></div>
+  <div id="modal-card"></div>
+</div>
+<div id="toast"></div>
+
+<script src="js/config.local.js?v=16"></script>
+<script type="module" src="js/main.js?v=16"></script>
+</body>
+</html>
