@@ -352,7 +352,11 @@ export function initModel(canvas, onPickMass) {
   controls.target.set(0, 26, 0);
   controls.enableDamping = true;
   controls.dampingFactor = 0.07;
-  controls.maxPolarAngle = Math.PI / 2 - 0.04;
+  // No fixed ceiling on the tilt: an architect wants the worm's-eye view of a
+  // tower against the sky. The only real limit is the ground, and that is
+  // recomputed each frame from the actual target height and distance below.
+  controls.maxPolarAngle = Math.PI * 0.995;
+  controls.minPolarAngle = 0.02;
   controls.minDistance = 30;
   controls.maxDistance = 420;
 
@@ -389,8 +393,8 @@ export function initModel(canvas, onPickMass) {
     if (sunAnim) { sunPhase += 0.0016; positionSun(); }
     stepParticles();
     driftClouds();
+    clampTiltToGround();
     controls.update();
-    if (camera.position.y < 1.6) camera.position.y = 1.6;   // never underground
     renderer.render(scene, camera);
   });
 }
@@ -1291,6 +1295,20 @@ export function setSelection(indices) {
     g.dispose();
   }
   scene.add(selGroup);
+}
+
+// The furthest you may tilt is wherever the camera would meet the ground:
+//   camera.y = target.y + distance * cos(phi)  >=  EYE_MIN
+// Solving for phi gives an exact ceiling, so the view stops smoothly at street
+// level instead of being cut off high above it.
+const EYE_MIN = 1.6;
+function clampTiltToGround() {
+  if (!controls || !camera) return;
+  const dist = camera.position.distanceTo(controls.target);
+  if (dist < 0.01) return;
+  const cosLimit = (EYE_MIN - controls.target.y) / dist;
+  const phiMax = Math.acos(Math.max(-1, Math.min(1, cosLimit)));
+  controls.maxPolarAngle = Math.min(Math.PI * 0.995, phiMax);
 }
 
 function resize(canvas) {
