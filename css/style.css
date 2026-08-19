@@ -1059,6 +1059,11 @@ body.workspace .splitter#split-rail { display: none; }
   body.workspace #gallery-wrap, body.workspace #mobile-tabs { display: none; }
   body.workspace.pane-model #left-col { display: none; }
   body.workspace.pane-sketch #mid-col { display: none; }
+  /* Both columns share one grid cell here, so whichever comes last is on top.
+     On the landing page that was the model — an invisible sheet of glass over
+     the napkin that swallowed every finger stroke. There is nothing to show
+     in it until a project is open. */
+  body.landing #mid-col { display: none; }
   body.workspace #stage > section + section { border-left: none; }
 
   /* the metric rail belongs in the Metrics sheet, not over the model */

@@ -45,9 +45,12 @@ export function initSketch(el, onChange) {
   ro.observe(canvas);
   resize();
 
-  // Pen/touch policy: once a stylus has been seen on this canvas, fingers stop
-  // drawing (palm rejection) and are free to pinch-zoom the napkin instead.
-  let penSeen = false;
+  // Pen/touch policy: a finger always draws. Palm rejection only bites while a
+  // stylus is actually on the glass, or just after it lifted — a sticky "pen
+  // seen once" flag would leave an iPad owner unable to draw with a finger
+  // ever again.
+  const PALM_MS = 900;
+  let penDownAt = 0, penActive = false;
   let activeId = null;
   const pressureOf = e => {
     if (e.pointerType !== 'pen') return 1;
@@ -57,8 +60,10 @@ export function initSketch(el, onChange) {
   };
 
   canvas.addEventListener('pointerdown', e => {
-    if (e.pointerType === 'pen') penSeen = true;
-    else if (penSeen && e.pointerType === 'touch') return;   // palm / finger ignored
+    if (e.pointerType === 'pen') { penActive = true; penDownAt = performance.now(); }
+    else if (e.pointerType === 'touch' && (penActive || performance.now() - penDownAt < PALM_MS)) {
+      return;                                                 // that is the palm, not the hand
+    }
     if (activeId !== null) return;                            // one stroke at a time
     activeId = e.pointerId;
     canvas.setPointerCapture(e.pointerId);
@@ -70,8 +75,14 @@ export function initSketch(el, onChange) {
   });
   canvas.addEventListener('pointermove', e => {
     if (!drawing || e.pointerId !== activeId) return;
-    // coalesced events keep fast pencil strokes smooth instead of polygonal
-    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    // Coalesced events keep fast pencil strokes smooth instead of polygonal.
+    // The list comes back empty on some paths, and an empty list would drop
+    // every point and leave the stroke looking like a tap, so fall back to
+    // the event itself.
+    let evs = [e];
+    if (e.getCoalescedEvents) {
+      try { const c = e.getCoalescedEvents(); if (c && c.length) evs = c; } catch { /* keep e */ }
+    }
     let added = false;
     for (const ev of evs) {
       const p = norm(ev);
@@ -81,7 +92,18 @@ export function initSketch(el, onChange) {
     }
     if (added) paint();
   });
+  // A small window onto the input state — a stroke that goes missing is
+  // otherwise invisible from the outside.
+  window.__napkin = {
+    strokes: () => strokes.length,
+    points: () => strokes[strokes.length - 1]?.pts.length ?? 0,
+    tool: () => currentTool,
+    active: () => activeId,
+    penWindow: () => ({ penActive, sincePen: Math.round(performance.now() - penDownAt) }),
+  };
+
   const up = e => {
+    if (e && e.pointerType === 'pen') { penActive = false; penDownAt = performance.now(); }
     if (e && e.pointerId !== activeId) return;
     activeId = null;
     if (!drawing) return;

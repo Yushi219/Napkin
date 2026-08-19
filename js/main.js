@@ -18,8 +18,8 @@ const $ = id => document.getElementById(id);
 
 // the two marks the build button swaps between, drawn like every other icon
 const ICON = {
-  arrow: '<svg class="ico" viewBox="0 0 24 24"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg>',
-  redo: '<svg class="ico" viewBox="0 0 24 24"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M18.6 3.2v3.6H15"/></svg>',
+  arrow: '<svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg>',
+  redo: '<svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M18.6 3.2v3.6H15"/></svg>',
 };
 
 let built = false;

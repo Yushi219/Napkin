@@ -13,28 +13,28 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@500;600&family=Great+Vibes&family=Pinyon+Script&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/style.css?v=20260819n" />
 <script type="importmap">
 {
   "imports": {
     "three": "./js/vendor/three.module.js",
     "three/addons/": "./js/vendor/addons/",
-    "./js/chat.js": "./js/chat.js?v=20260819m",
-    "./js/device.js": "./js/device.js?v=20260819m",
-    "./js/examples.js": "./js/examples.js?v=20260819m",
-    "./js/gallery.js": "./js/gallery.js?v=20260819m",
-    "./js/hands.js": "./js/hands.js?v=20260819m",
-    "./js/interpret.js": "./js/interpret.js?v=20260819m",
-    "./js/main.js": "./js/main.js?v=20260819m",
-    "./js/metrics.js": "./js/metrics.js?v=20260819m",
-    "./js/model.js": "./js/model.js?v=20260819m",
-    "./js/render.js": "./js/render.js?v=20260819m",
-    "./js/sketch.js": "./js/sketch.js?v=20260819m",
-    "./js/solar.js": "./js/solar.js?v=20260819m",
-    "./js/splitters.js": "./js/splitters.js?v=20260819m",
-    "./js/tower.js": "./js/tower.js?v=20260819m",
-    "./js/ui.js": "./js/ui.js?v=20260819m",
-    "./js/versions.js": "./js/versions.js?v=20260819m"
+    "./js/chat.js": "./js/chat.js?v=20260819n",
+    "./js/device.js": "./js/device.js?v=20260819n",
+    "./js/examples.js": "./js/examples.js?v=20260819n",
+    "./js/gallery.js": "./js/gallery.js?v=20260819n",
+    "./js/hands.js": "./js/hands.js?v=20260819n",
+    "./js/interpret.js": "./js/interpret.js?v=20260819n",
+    "./js/main.js": "./js/main.js?v=20260819n",
+    "./js/metrics.js": "./js/metrics.js?v=20260819n",
+    "./js/model.js": "./js/model.js?v=20260819n",
+    "./js/render.js": "./js/render.js?v=20260819n",
+    "./js/sketch.js": "./js/sketch.js?v=20260819n",
+    "./js/solar.js": "./js/solar.js?v=20260819n",
+    "./js/splitters.js": "./js/splitters.js?v=20260819n",
+    "./js/tower.js": "./js/tower.js?v=20260819n",
+    "./js/ui.js": "./js/ui.js?v=20260819n",
+    "./js/versions.js": "./js/versions.js?v=20260819n"
   }
 }
 </script>
@@ -55,7 +55,7 @@ if (location.protocol === 'file:') {
 
 <header id="dash">
   <div class="brand">
-    <button id="btn-home" title="Back to the napkin"><svg class="ico" viewBox="0 0 24 24"><path d="M19.4 12H5"/><path d="M10.4 6.6 5 12l5.4 5.4"/></svg></button>
+    <button id="btn-home" title="Back to the napkin"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19.4 12H5"/><path d="M10.4 6.6 5 12l5.4 5.4"/></svg></button>
     <span class="brand-name">NAPKIN</span>
   </div>
   <div class="dash-type">
@@ -75,7 +75,7 @@ if (location.protocol === 'file:') {
   <div class="dash-actions">
     <span id="dash-signature"></span>
     <button id="btn-versions" class="pill-btn" title="Version stream">v<span id="version-count">0</span></button>
-    <button id="btn-settings" class="pill-btn icon-only" title="Settings" aria-label="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><path d="M19.1 14.4a1.5 1.5 0 0 0 .3 1.7l.1.1a1.9 1.9 0 1 1-2.6 2.6l-.1-.1a1.5 1.5 0 0 0-1.7-.3 1.5 1.5 0 0 0-.9 1.4v.2a1.9 1.9 0 1 1-3.8 0v-.1a1.5 1.5 0 0 0-1-1.4 1.5 1.5 0 0 0-1.7.3l-.1.1a1.9 1.9 0 1 1-2.6-2.6l.1-.1a1.5 1.5 0 0 0 .3-1.7 1.5 1.5 0 0 0-1.4-.9h-.2a1.9 1.9 0 1 1 0-3.8h.1a1.5 1.5 0 0 0 1.4-1 1.5 1.5 0 0 0-.3-1.7l-.1-.1a1.9 1.9 0 1 1 2.6-2.6l.1.1a1.5 1.5 0 0 0 1.7.3h.1a1.5 1.5 0 0 0 .9-1.4v-.2a1.9 1.9 0 1 1 3.8 0v.1a1.5 1.5 0 0 0 .9 1.4 1.5 1.5 0 0 0 1.7-.3l.1-.1a1.9 1.9 0 1 1 2.6 2.6l-.1.1a1.5 1.5 0 0 0-.3 1.7v.1a1.5 1.5 0 0 0 1.4.9h.2a1.9 1.9 0 1 1 0 3.8h-.1a1.5 1.5 0 0 0-1.4.9z"/></svg></button>
+    <button id="btn-settings" class="pill-btn icon-only" title="Settings" aria-label="Settings"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.1 14.4a1.5 1.5 0 0 0 .3 1.7l.1.1a1.9 1.9 0 1 1-2.6 2.6l-.1-.1a1.5 1.5 0 0 0-1.7-.3 1.5 1.5 0 0 0-.9 1.4v.2a1.9 1.9 0 1 1-3.8 0v-.1a1.5 1.5 0 0 0-1-1.4 1.5 1.5 0 0 0-1.7.3l-.1.1a1.9 1.9 0 1 1-2.6-2.6l.1-.1a1.5 1.5 0 0 0 .3-1.7 1.5 1.5 0 0 0-1.4-.9h-.2a1.9 1.9 0 1 1 0-3.8h.1a1.5 1.5 0 0 0 1.4-1 1.5 1.5 0 0 0-.3-1.7l-.1-.1a1.9 1.9 0 1 1 2.6-2.6l.1.1a1.5 1.5 0 0 0 1.7.3h.1a1.5 1.5 0 0 0 .9-1.4v-.2a1.9 1.9 0 1 1 3.8 0v.1a1.5 1.5 0 0 0 .9 1.4 1.5 1.5 0 0 0 1.7-.3l.1-.1a1.9 1.9 0 1 1 2.6 2.6l-.1.1a1.5 1.5 0 0 0-.3 1.7v.1a1.5 1.5 0 0 0 1.4.9h.2a1.9 1.9 0 1 1 0 3.8h-.1a1.5 1.5 0 0 0-1.4.9z"/></svg></button>
   </div>
 </header>
 
@@ -106,10 +106,10 @@ if (location.protocol === 'file:') {
       </div>
       <div id="sketch-tools">
         <div class="seg">
-          <button id="tool-pen" class="active" title="Pen" aria-label="Pen"><svg class="ico" viewBox="0 0 24 24"><path d="M12 20.2h8.6"/><path d="M16.3 3.6a2 2 0 0 1 2.9 2.9L7.2 18.5l-3.9 1 1-3.9z"/></svg></button>
-          <button id="tool-erase" title="Eraser" aria-label="Eraser"><svg class="ico" viewBox="0 0 24 24"><path d="M8.6 20.4h11.6"/><path d="M14.4 4 3.9 14.5a1.9 1.9 0 0 0 0 2.7l3.1 3.1h4.2l8.8-8.8a1.9 1.9 0 0 0 0-2.7l-2.9-2.9a1.9 1.9 0 0 0-2.7 0z"/><path d="M9.3 9.1 15.7 15.5"/></svg></button>
-          <button id="tool-undo" title="Undo stroke" aria-label="Undo"><svg class="ico" viewBox="0 0 24 24"><path d="M4.2 8.2h10.6a5 5 0 0 1 0 10h-5.6"/><path d="M8 4.4 4.2 8.2 8 12"/></svg></button>
-          <button id="tool-clear" title="Start over" aria-label="Start over"><svg class="ico" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></svg></button>
+          <button id="tool-pen" class="active" title="Pen" aria-label="Pen"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2h8.6"/><path d="M16.3 3.6a2 2 0 0 1 2.9 2.9L7.2 18.5l-3.9 1 1-3.9z"/></svg></button>
+          <button id="tool-erase" title="Eraser" aria-label="Eraser"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 20.4h11.6"/><path d="M14.4 4 3.9 14.5a1.9 1.9 0 0 0 0 2.7l3.1 3.1h4.2l8.8-8.8a1.9 1.9 0 0 0 0-2.7l-2.9-2.9a1.9 1.9 0 0 0-2.7 0z"/><path d="M9.3 9.1 15.7 15.5"/></svg></button>
+          <button id="tool-undo" title="Undo stroke" aria-label="Undo"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 8.2h10.6a5 5 0 0 1 0 10h-5.6"/><path d="M8 4.4 4.2 8.2 8 12"/></svg></button>
+          <button id="tool-clear" title="Start over" aria-label="Start over"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></svg></button>
         </div>
         <label class="pill-btn" for="photo-input" title="Upload a photo of a real napkin">Photo</label>
         <input id="photo-input" type="file" accept="image/*" class="hidden" />
@@ -122,7 +122,7 @@ if (location.protocol === 'file:') {
           <option value="school">School</option>
           <option value="custom">Something else…</option>
         </select>
-        <button id="btn-build" class="build-btn">Build it<svg class="ico" viewBox="0 0 24 24"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg></button>
+        <button id="btn-build" class="build-btn">Build it<svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg></button>
       </div>
       <div id="concept-pane" class="hidden">
         <span class="pane-tag">concept pass</span>
@@ -178,7 +178,7 @@ if (location.protocol === 'file:') {
       <div id="sel-bar" class="hidden">
         <span class="sel-label">pointing at</span>
         <span id="sel-chips"></span>
-        <button id="sel-clear" title="Clear selection" aria-label="Clear selection"><svg class="ico" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></svg></button>
+        <button id="sel-clear" title="Clear selection" aria-label="Clear selection"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></svg></button>
       </div>
       <video id="hand-video" playsinline muted class="hidden"></video>
 
@@ -206,16 +206,16 @@ if (location.protocol === 'file:') {
     </div>
 
     <div id="model-controls">
-      <button id="btn-hand" class="pill-btn" title="Hand control — pinch grabs, open palm orbits, fist zooms"><svg class="ico" viewBox="0 0 24 24"><path d="M8.5 11V5.4a1.35 1.35 0 0 1 2.7 0V10"/><path d="M11.2 10V4.2a1.35 1.35 0 0 1 2.7 0V10"/><path d="M13.9 10.6V6a1.35 1.35 0 0 1 2.7 0v7"/><path d="M8.5 11 6.4 13a1.9 1.9 0 0 0-.2 2.5l2.1 3a4.8 4.8 0 0 0 3.9 2h1.4a3.5 3.5 0 0 0 3.5-3.5V13"/></svg>Hands</button>
-      <button id="btn-anno" class="pill-btn" title="Red pen — circle a part of the model and say what to change"><svg class="ico" viewBox="0 0 24 24"><path d="M12 20.2h8.6"/><path d="M16.3 3.6a2 2 0 0 1 2.9 2.9L7.2 18.5l-3.9 1 1-3.9z"/></svg>Note</button>
-      <button id="btn-params" class="pill-btn" title="Parameters"><svg class="ico" viewBox="0 0 24 24"><path d="M4 8h9M17.6 8H20M4 16h3.4M12 16h8"/><circle cx="15" cy="8" r="2.1"/><circle cx="9.7" cy="16" r="2.1"/></svg>Params</button>
-      <button id="btn-compare" class="pill-btn hidden" title="Compare model against render"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 3.4v17.2"/><path d="M12 5.6a6.4 6.4 0 0 1 0 12.8z" fill="currentColor" stroke="none"/></svg>Compare</button>
-      <button id="btn-live" class="pill-btn" title="Live-link to Rhino"><svg class="ico" viewBox="0 0 24 24"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M18.6 3.2v3.6H15"/></svg>Live</button>
-      <label class="pill-btn" for="obj-input" title="Import a 3D model (.obj / .glb)"><svg class="ico" viewBox="0 0 24 24"><path d="M12 2.9 20 7.2v9.6L12 21.1 4 16.8V7.2z"/><path d="M4 7.2 12 11.5 20 7.2"/><path d="M12 11.5v9.6"/></svg>3D</label>
+      <button id="btn-hand" class="pill-btn" title="Hand control — pinch grabs, open palm orbits, fist zooms"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 11V5.4a1.35 1.35 0 0 1 2.7 0V10"/><path d="M11.2 10V4.2a1.35 1.35 0 0 1 2.7 0V10"/><path d="M13.9 10.6V6a1.35 1.35 0 0 1 2.7 0v7"/><path d="M8.5 11 6.4 13a1.9 1.9 0 0 0-.2 2.5l2.1 3a4.8 4.8 0 0 0 3.9 2h1.4a3.5 3.5 0 0 0 3.5-3.5V13"/></svg>Hands</button>
+      <button id="btn-anno" class="pill-btn" title="Red pen — circle a part of the model and say what to change"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2h8.6"/><path d="M16.3 3.6a2 2 0 0 1 2.9 2.9L7.2 18.5l-3.9 1 1-3.9z"/></svg>Note</button>
+      <button id="btn-params" class="pill-btn" title="Parameters"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h9M17.6 8H20M4 16h3.4M12 16h8"/><circle cx="15" cy="8" r="2.1"/><circle cx="9.7" cy="16" r="2.1"/></svg>Params</button>
+      <button id="btn-compare" class="pill-btn hidden" title="Compare model against render"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M12 3.4v17.2"/><path d="M12 5.6a6.4 6.4 0 0 1 0 12.8z" fill="currentColor" stroke="none"/></svg>Compare</button>
+      <button id="btn-live" class="pill-btn" title="Live-link to Rhino"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M18.6 3.2v3.6H15"/></svg>Live</button>
+      <label class="pill-btn" for="obj-input" title="Import a 3D model (.obj / .glb)"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.9 20 7.2v9.6L12 21.1 4 16.8V7.2z"/><path d="M4 7.2 12 11.5 20 7.2"/><path d="M12 11.5v9.6"/></svg>3D</label>
       <input id="obj-input" type="file" accept=".obj,.glb,.gltf" class="hidden" />
-      <label class="pill-btn" for="reverse-input" title="Reverse: upload a rendering — I decompose it into 3D massing"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3 3.2 7.5 12 12l8.8-4.5z"/><path d="M3.2 12.2 12 16.7l8.8-4.5"/><path d="M3.2 16.6 12 21.1l8.8-4.5"/></svg>Decompose</label>
+      <label class="pill-btn" for="reverse-input" title="Reverse: upload a rendering — I decompose it into 3D massing"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3.2 7.5 12 12l8.8-4.5z"/><path d="M3.2 12.2 12 16.7l8.8-4.5"/><path d="M3.2 16.6 12 21.1l8.8-4.5"/></svg>Decompose</label>
       <input id="reverse-input" type="file" accept="image/*" class="hidden" />
-      <button id="btn-rhino" class="pill-btn" title="Download .3dm — opens straight in Rhino"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3.4v11.2"/><path d="M7.4 10.2 12 14.8l4.6-4.6"/><path d="M4 20.2h16"/></svg>Rhino</button>
+      <button id="btn-rhino" class="pill-btn" title="Download .3dm — opens straight in Rhino"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4v11.2"/><path d="M7.4 10.2 12 14.8l4.6-4.6"/><path d="M4 20.2h16"/></svg>Rhino</button>
     </div>
 
     <div id="params-panel" class="hidden"></div>
@@ -236,14 +236,14 @@ if (location.protocol === 'file:') {
   <div class="splitter h" id="split-chat" title="Drag to resize · double-click to reset"></div>
   <div id="chat-log" class="hidden"></div>
   <div class="chat-row">
-    <span class="chat-glyph"><svg class="ico" viewBox="0 0 24 24"><path d="M12 20.2h8.6"/><path d="M16.3 3.6a2 2 0 0 1 2.9 2.9L7.2 18.5l-3.9 1 1-3.9z"/></svg></span>
+    <span class="chat-glyph"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2h8.6"/><path d="M16.3 3.6a2 2 0 0 1 2.9 2.9L7.2 18.5l-3.9 1 1-3.9z"/></svg></span>
     <input id="chat-input" type="text" placeholder="Say it once — “add a glass podium”, or for the render: “rainy dusk, brick, people”" maxlength="240" />
-    <button id="btn-mic" class="pill-btn icon-only" title="Dictate — speech to text" aria-label="Dictate"><svg class="ico" viewBox="0 0 24 24"><rect x="9" y="2.8" width="6" height="11" rx="3"/><path d="M5.6 11.6a6.4 6.4 0 0 0 12.8 0"/><path d="M12 18v3.2"/></svg></button>
-    <button id="chat-send" class="build-btn small" title="Change the building">Modify<svg class="ico" viewBox="0 0 24 24"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg></button>
+    <button id="btn-mic" class="pill-btn icon-only" title="Dictate — speech to text" aria-label="Dictate"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.8" width="6" height="11" rx="3"/><path d="M5.6 11.6a6.4 6.4 0 0 0 12.8 0"/><path d="M12 18v3.2"/></svg></button>
+    <button id="chat-send" class="build-btn small" title="Change the building">Modify<svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg></button>
     <label class="pill-btn" for="ref-input" id="ref-label" title="Style reference for the render — geometry always comes from your model">Ref</label>
     <input id="ref-input" type="file" accept="image/*" class="hidden" />
     <span id="ref-chip" class="hidden"></span>
-    <button id="chat-render" class="build-btn small render" title="Render this view with your words">Render<svg class="ico" viewBox="0 0 24 24"><path d="M12 3.2 13.9 9 19.7 10.9 13.9 12.8 12 18.6 10.1 12.8 4.3 10.9 10.1 9z"/><path d="M18.8 3.6v3.2M20.4 5.2h-3.2"/></svg></button>
+    <button id="chat-render" class="build-btn small render" title="Render this view with your words">Render<svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 13.9 9 19.7 10.9 13.9 12.8 12 18.6 10.1 12.8 4.3 10.9 10.1 9z"/><path d="M18.8 3.6v3.2M20.4 5.2h-3.2"/></svg></button>
   </div>
 </footer>
 
@@ -264,7 +264,7 @@ if (location.protocol === 'file:') {
 </div>
 <div id="toast"></div>
 
-<script src="js/config.local.js?v=20260819m"></script>
-<script type="module" src="js/main.js?v=20260819m"></script>
+<script src="js/config.local.js?v=20260819n"></script>
+<script type="module" src="js/main.js?v=20260819n"></script>
 </body>
 </html>
