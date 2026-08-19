@@ -417,6 +417,24 @@ export function toggleSun(on) { sunAnim = on; }
 
 // Frame the camera the way the sketch was drawn: yaw around the building,
 // pitch above the horizon. Called with Claude's reading of the sketch view.
+// The render is made from one specific viewpoint; these let us pin it there so
+// the overlay and the model line up pixel for pixel.
+export function getCameraPose() {
+  if (!camera || !controls) return null;
+  return {
+    pos: [camera.position.x, camera.position.y, camera.position.z],
+    target: [controls.target.x, controls.target.y, controls.target.z],
+    fov: camera.fov,
+  };
+}
+export function restoreCameraPose(p) {
+  if (!p || !camera || !controls) return;
+  camera.position.set(p.pos[0], p.pos[1], p.pos[2]);
+  controls.target.set(p.target[0], p.target[1], p.target[2]);
+  if (p.fov) { camera.fov = p.fov; camera.updateProjectionMatrix(); }
+  controls.update();
+}
+
 export function setCameraAngle(yawDeg, pitchDeg) {
   const st = towerStats();
   const r = Math.max(st.bbW, st.bbD, st.height) * 1.9 + 25;

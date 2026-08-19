@@ -898,3 +898,27 @@ body.workspace .splitter#split-rail { display: none; }
 /* the parameter desk stops above the model controls instead of covering them */
 #params-panel { top: 40px; bottom: 54px; border-radius: 0 0 0 12px; }
 #split-params { top: 40px; bottom: 54px; }
+
+/* the written brief, shown in full so you can see what was actually sent */
+.cmsg.ai.prompt {
+  font-family: var(--font-mono); font-size: 10.5px; line-height: 1.6;
+  color: var(--ink-soft); background: #fdfaf3; border: 1px dashed var(--line);
+  max-width: 92%; white-space: pre-wrap;
+}
+
+/* render history sits inside the AI render view, bottom-left */
+#render-strip {
+  position: absolute; left: 12px; bottom: 84px; z-index: 9;
+  display: flex; gap: 6px; max-width: 60%; overflow-x: auto;
+  padding: 6px; border-radius: 12px;
+  background: #ffffffcc; backdrop-filter: blur(8px);
+  scrollbar-width: none;
+}
+#render-strip::-webkit-scrollbar { display: none; }
+#render-strip img {
+  width: 58px; height: 44px; object-fit: cover; border-radius: 7px;
+  cursor: pointer; border: 2px solid transparent; transition: border-color .15s;
+}
+#render-strip img:hover { border-color: var(--accent); }
+#render-strip img.active { border-color: var(--ink); }
+#ref-chip { font-size: 10.5px; color: var(--accent); white-space: nowrap; }

@@ -32,6 +32,7 @@ function setViewMode(mode) {
   viewMode = mode;
   document.querySelectorAll('.vmode').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   const layer = $('render-layer');
+  $('render-strip').classList.toggle('hidden', mode !== 'render' || !$('render-strip').children.length);
   if (mode === 'render') {
     if (!lastRenderURL) { ui.addChatMsg('ai', 'No render yet — type what you want and press Render ✦.'); }
     layer.classList.toggle('hidden', !lastRenderURL);
@@ -44,12 +45,18 @@ function setViewMode(mode) {
   }
 }
 
-function showRender(url) {
+let renderCamera = null;
+
+function showRender(url, { local = false } = {}) {
   lastRenderURL = url;
+  lastRenderIsLocal = local;
   $('render-img').src = url;
   $('btn-compare').classList.remove('hidden');
+  // the render belongs to the view it was made from — go back to it
+  if (renderCamera) model.restoreCameraPose(renderCamera);
   setViewMode('render');
 }
+let lastRenderIsLocal = false;
 
 function setCompare(on) {
   compareOn = on && !!lastRenderURL;
@@ -488,14 +495,36 @@ async function decomposeRender(dataURL) {
 
 // ---------------- render ----------------
 
+// The render pipeline, narrated. Four visible steps, exactly like promptitect:
+//   1  freeze the current view and use it as the INPUT image
+//   2  expand one sentence into a full architectural brief (Claude)
+//   3  send input + style reference + brief to Nano Banana Pro
+//   4  lock the camera and lay the render over the model for comparison
+// Every step reports into the chat, and a failure says which step failed and why.
 async function doRender(userLine = '') {
-  if (!built) return;
-  ui.veil(true, hasGemini() ? 'Nano Banana Pro is painting…' : 'stylizing locally (add a Gemini key for real renders)');
+  if (!built) { ui.addChatMsg('ai', 'Build something first, then I can render it.', 'err'); return; }
+
+  const m = compute(customTypeText);
+  const steps = [];
+  const step = (text, cls = 'busy') => { const el = ui.addChatMsg('ai', text, cls); steps.push(el); return el; };
+  const done = (el, text) => { el.classList.remove('busy'); el.textContent = text; };
+
+  $('chat-render').disabled = true;
+  ui.veil(true, 'freezing the view…');
+
   try {
-    const m = compute(customTypeText);
-    // one sentence -> a full architectural-visualisation brief (promptitect taxonomy)
-    let renderBrief = userLine;
+    // ---- 1. the input image is exactly what you are looking at ----
+    const s1 = step('① Capturing this exact view as the input image…');
+    if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg);
+    const snapshot = model.modelSnapshot();
+    renderCamera = model.getCameraPose();       // lock: the render belongs to this view
+    done(s1, `① Input image captured — ${model.state.archetype === 'tower' ? 'parametric tower' : (model.state.masses?.length || 0) + ' volumes'}, view locked.`);
+
+    // ---- 2. one sentence becomes a full brief ----
+    let brief = userLine;
     if (hasClaude()) {
+      const s2 = step('② Writing the render brief from your words…');
+      ui.veil(true, 'writing the brief…');
       try {
         const written = await writeRenderPrompt(userLine, {
           ...anthropicCfg(),
@@ -505,34 +534,64 @@ async function doRender(userLine = '') {
           structure: model.state.structure,
           gfa: Math.round(m.stats.gfa),
           styleHint: userLine || 'photorealistic golden hour',
+          weather: model.getWeather().label,
+          setting: model.getLandscape().label,
+          hasRef: !!refDataURL,
         });
         if (written) {
-          renderBrief = written;
-          ui.addChatMsg('ai', '✦ ' + written.slice(0, 150) + (written.length > 150 ? '…' : ''));
-        }
-      } catch (e) { console.warn('prompt writer failed', e); }
+          brief = written;
+          done(s2, '② Brief written:');
+          ui.addChatMsg('ai', written, 'prompt');     // the full prompt, verbatim
+        } else done(s2, '② No brief returned — using your words as written.');
+      } catch (e) {
+        s2.className = 'cmsg ai err';
+        s2.textContent = `② Brief writer failed (${String(e.message).slice(0, 70)}) — using your words as written.`;
+      }
+    } else {
+      step('② No Anthropic key — sending your words straight through.', '');
     }
+
+    // ---- 3. the actual image model ----
+    const s3 = step(refDataURL
+      ? '③ Nano Banana Pro is painting — your view as structure, your reference for style…'
+      : '③ Nano Banana Pro is painting…');
+    ui.veil(true, hasGemini() ? 'Nano Banana Pro is painting…' : 'no Gemini key — stylising locally');
+
     const { url, engine } = await renderImage({
-      snapshot: model.modelSnapshot(),
+      snapshot,
       styleId,
-      userPrompt: renderBrief,
+      userPrompt: brief,
       refDataURL,
       typeLabel: m.type.label,
     });
-    showRender(url);
-    ui.addToStrip(url, u => showRender(u));
-    if (engine.startsWith('local') && hasGemini()) {
-      const quota = engine.includes('429') || engine.toLowerCase().includes('quota');
-      ui.addChatMsg('ai', quota
-        ? 'Gemini says 429: your key is valid but has NO image-generation quota. Enable billing for the key\'s project at aistudio.google.com, then render again. Showing a local stylization meanwhile.'
-        : `Gemini failed (${engine.slice(7, 90)}) — local stylization shown.`, 'err');
-    } else if (!engine.startsWith('local')) {
-      ui.addChatMsg('ai', `Rendered with ${engine}.`);
+
+    const local = engine.startsWith('local');
+    if (!local) {
+      done(s3, `③ Image returned by ${engine}.`);
+    } else {
+      s3.className = 'cmsg ai err';
+      if (!hasGemini()) {
+        s3.textContent = '③ No Gemini key on this build, so nothing was sent to the image model — what you see is a local tint of the model, not a render. Add a key in ⚙ (or open the local copy that has one).';
+      } else if (/429|quota/i.test(engine)) {
+        s3.textContent = '③ Google refused with 429 — the key is valid but its project has no image-generation quota. Turn on billing for that project at aistudio.google.com, then press Render again. Showing a local tint meanwhile.';
+      } else {
+        s3.textContent = `③ Gemini failed: ${engine.replace(/^local \(|\)$/g, '').slice(0, 160)}. Showing a local tint meanwhile.`;
+      }
+    }
+
+    // ---- 4. overlay on the model, camera pinned, compare ready ----
+    showRender(url, { local });
+    ui.addToStrip(url, u => showRender(u, { local }));
+    if (!local) {
+      const s4 = step('④ Laid over the model — drag the divider to compare.', '');
+      setCompare(true);
+      void s4;
     }
   } catch (e) {
     console.error(e);
-    ui.toast('Render failed — check the console.');
+    ui.addChatMsg('ai', `Render pipeline failed: ${String(e.message).slice(0, 160)}`, 'err');
   } finally {
+    $('chat-render').disabled = false;
     ui.veil(false);
   }
 }

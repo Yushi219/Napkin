@@ -145,6 +145,7 @@ if (location.protocol === 'file:') {
         <img id="render-img" alt="render" />
         <div id="compare-divider" class="hidden"><span class="cd-grip">‖</span></div>
       </div>
+      <div id="render-strip" class="hidden"></div>
       <div id="render-veil" class="hidden"><div class="veil-spin"></div><span id="veil-label">rendering…</span></div>
       <div id="model-badge"></div>
       <div id="sel-bar" class="hidden">
@@ -185,9 +186,6 @@ if (location.protocol === 'file:') {
       <button id="btn-live" class="pill-btn" title="Live-link to Rhino">⟳ Live</button>
       <label class="pill-btn" for="obj-input" title="Import a 3D model (.obj / .glb)">⇪ 3D</label>
       <input id="obj-input" type="file" accept=".obj,.glb,.gltf" class="hidden" />
-      <label class="pill-btn" for="ref-input" title="Style reference image for the render">🖼 Ref</label>
-      <input id="ref-input" type="file" accept="image/*" class="hidden" />
-      <span id="ref-chip" class="hidden"></span>
       <label class="pill-btn" for="reverse-input" title="Reverse: upload a rendering — I decompose it into 3D massing">⇪ Decompose</label>
       <input id="reverse-input" type="file" accept="image/*" class="hidden" />
       <button id="btn-rhino" class="pill-btn" title="Download .3dm — opens straight in Rhino">⇩ Rhino</button>
@@ -195,7 +193,7 @@ if (location.protocol === 'file:') {
 
     <div id="params-panel" class="hidden"></div>
     <div class="splitter v" id="split-params" title="Drag to resize · double-click to reset"></div>
-    <div id="render-strip"></div>
+
   </section>
   <section id="gallery-wrap">
     <div class="splitter v" id="split-rail" title="Drag to resize · double-click to reset"></div>
@@ -214,6 +212,9 @@ if (location.protocol === 'file:') {
     <span class="chat-glyph">✎</span>
     <input id="chat-input" type="text" placeholder="Say it once — “add a glass podium”, or for the render: “rainy dusk, brick, people”" maxlength="240" />
     <button id="chat-send" class="build-btn small" title="Change the building">Modify ⟶</button>
+    <label class="pill-btn" for="ref-input" id="ref-label" title="Style reference for the render — geometry always comes from your model">Ref</label>
+    <input id="ref-input" type="file" accept="image/*" class="hidden" />
+    <span id="ref-chip" class="hidden"></span>
     <button id="chat-render" class="build-btn small render" title="Render this view with your words">Render ✦</button>
   </div>
 </footer>
