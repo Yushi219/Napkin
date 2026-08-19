@@ -749,6 +749,10 @@ function syncSunControls() {
 }
 
 function wire() {
+  // Which machine this is has to be settled first — the frame ratio, the
+  // default level of detail and half the layout all branch on it.
+  const dev = initDevice();
+
   $('btn-build').addEventListener('click', build);
 
   // ---- napkin tools ----
@@ -946,7 +950,11 @@ function wire() {
   // Frame ratio: the canvas is letterboxed to this, so what you compose is
   // exactly what the render model receives.
   const RATIOS = [['16:9', 16 / 9], ['3:2', 3 / 2], ['4:3', 4 / 3], ['1:1', 1], ['9:16', 9 / 16]];
-  let ratioIndex = Math.max(0, RATIOS.findIndex(r => r[0] === localStorage.getItem('napkin_ratio')));
+  // A phone is tall and narrow: a 16:9 frame leaves the building the height of
+  // a postage stamp, so it opens square there and wide everywhere else.
+  const DEFAULT_RATIO = deviceKind() === 'phone' ? '1:1' : '16:9';
+  const ratioOf = label => Math.max(0, RATIOS.findIndex(r => r[0] === label));
+  let ratioIndex = ratioOf(localStorage.getItem('napkin_ratio') || DEFAULT_RATIO);
   // The frame is measured here rather than in CSS: letterboxing a canvas with
   // aspect-ratio makes its layout size depend on its own drawing buffer, and
   // that loop is what stretched the model when the ratio changed.
@@ -1004,7 +1012,7 @@ function wire() {
     ratioIndex = (ratioIndex + 1) % RATIOS.length;
     applyRatio();
   });
-  $('btn-aspect').addEventListener('dblclick', () => { ratioIndex = 0; applyRatio(); });
+  $('btn-aspect').addEventListener('dblclick', () => { ratioIndex = ratioOf(DEFAULT_RATIO); applyRatio(); });
   applyRatio();
 
   cycler($('btn-landscape'),
@@ -1069,10 +1077,11 @@ function wire() {
     }
     openSheet(kind);
   }));
-  $('viewport').addEventListener('pointerdown', e => {
-    if (e.target.closest('#site-bar, #model-controls, #params-panel, #chatbar, #phone-bar')) return;
-    closeSheets();
-  });
+  // A sheet stays put while you work the model. Half of what these panels do
+  // — sun hour, level of detail, a parameter slider — only makes sense while
+  // you are turning the building, and closing on first touch made the panel
+  // and the model mutually exclusive. It closes on its own tab, on another
+  // tab, or on the way into fullscreen.
 
   $('btn-compare').addEventListener('click', () => setCompare(!compareOn));
   initCompareDrag();
@@ -1205,7 +1214,6 @@ function wire() {
     model.toggleSpin(on);
   });
   // ---- device adaptation ----
-  const dev = initDevice();
   document.querySelectorAll('#mobile-tabs button').forEach(b =>
     b.addEventListener('click', () => showPane(b.dataset.pane)));
   if (dev === 'phone') showPane('sketch');
