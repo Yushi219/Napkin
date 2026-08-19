@@ -154,8 +154,6 @@ if (location.protocol === 'file:') {
         <button id="sel-clear" title="Clear selection">✕</button>
       </div>
       <video id="hand-video" playsinline muted class="hidden"></video>
-      <button class="drawer-tab" id="tab-scene" type="button" aria-label="Scene controls">SCENE</button>
-      <button class="drawer-tab" id="tab-tools" type="button" aria-label="Model tools">TOOLS</button>
 
       <div id="site-bar">
         <select id="site-select" title="Site — drives real sun geometry"></select>
@@ -220,6 +218,14 @@ if (location.protocol === 'file:') {
     <button id="chat-render" class="build-btn small render" title="Render this view with your words">Render ✦</button>
   </div>
 </footer>
+
+<nav id="phone-bar" aria-label="Phone controls">
+  <button data-sheet="napkin"><span class="pb-icon">✎</span>Napkin</button>
+  <button data-sheet="scene"><span class="pb-icon">☀</span>Scene</button>
+  <button data-sheet="tools"><span class="pb-icon">⚒</span>Tools</button>
+  <button data-sheet="params"><span class="pb-icon">⚌</span>Params</button>
+  <button data-sheet="chat" class="pb-say"><span class="pb-icon">✦</span>Say it</button>
+</nav>
 
 <div id="popover" class="hidden"></div>
 <div id="modal-root" class="hidden">

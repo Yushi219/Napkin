@@ -144,8 +144,10 @@ function openProject(item, isUser) {
   if (item.camera) { model.setCameraAngle(item.camera.yawDeg, item.camera.pitchDeg); lastCamera = item.camera; }
   syncParams();
   lastSketchShot = null;                    // it was never a photographed napkin
-  $('params-panel').classList.remove('hidden');
-  $('btn-params').classList.add('active');
+  if (deviceKind() !== 'phone') {
+    $('params-panel').classList.remove('hidden');
+    $('btn-params').classList.add('active');
+  }
   commitVersion(`opened ${item.name}`);
   ui.addChatMsg('ai', `${item.name} — ${item.reading || 'opened from the rail'}. Pull it apart: click a volume, or open ⚌ Params.`);
   if (deviceKind() === 'phone') showPane('model');
@@ -892,17 +894,36 @@ function wire() {
     () => { const W = model.resetWeather(); syncSunControls(); return W; },
     W => `${W.label} · ${W.note}`);
 
-  // phone: the two toolbars live in edge drawers, one open at a time
-  const drawer = (tab, cls) => $(tab).addEventListener('click', () => {
-    const open = document.body.classList.contains(cls);
-    document.body.classList.remove('drawer-scene', 'drawer-tools');
-    if (!open) document.body.classList.add(cls);
-  });
-  drawer('tab-scene', 'drawer-scene');
-  drawer('tab-tools', 'drawer-tools');
+  // Phone: one bottom sheet at a time, raised from the work bar. Tapping the
+  // same button again, or anywhere on the model, puts it away.
+  const SHEETS = ['scene', 'tools', 'params', 'chat'];
+  function closeSheets() {
+    SHEETS.forEach(k => document.body.classList.remove('sheet-' + k));
+    document.querySelectorAll('#phone-bar button').forEach(b => b.classList.remove('active'));
+  }
+  function openSheet(kind) {
+    const already = document.body.classList.contains('sheet-' + kind);
+    closeSheets();
+    if (already) return;
+    document.body.classList.add('sheet-' + kind);
+    document.querySelector(`#phone-bar [data-sheet="${kind}"]`)?.classList.add('active');
+    if (kind === 'params') syncParams();
+    if (kind === 'chat') setTimeout(() => $('chat-input').focus(), 260);
+  }
+  document.querySelectorAll('#phone-bar button').forEach(b => b.addEventListener('click', () => {
+    const kind = b.dataset.sheet;
+    if (kind === 'napkin') {
+      closeSheets();
+      const onSketch = document.body.classList.contains('pane-sketch');
+      showPane(onSketch ? 'model' : 'sketch');
+      b.classList.toggle('active', !onSketch);
+      return;
+    }
+    openSheet(kind);
+  }));
   $('viewport').addEventListener('pointerdown', e => {
-    if (e.target.closest('#site-bar, #model-controls, .drawer-tab')) return;
-    document.body.classList.remove('drawer-scene', 'drawer-tools');
+    if (e.target.closest('#site-bar, #model-controls, #params-panel, #chatbar, #phone-bar')) return;
+    closeSheets();
   });
 
   $('btn-compare').addEventListener('click', () => setCompare(!compareOn));

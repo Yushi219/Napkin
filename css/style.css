@@ -655,6 +655,7 @@ body.landing #chatbar { transform: translateY(110%); opacity: 0; position: absol
    plus body.has-pen when a stylus (Apple Pencil) has been detected. */
 
 #mobile-tabs { display: none; }
+#phone-bar { display: none; }
 
 /* --- shared touch ergonomics --- */
 body.dev-tablet, body.dev-phone { -webkit-text-size-adjust: 100%; }
@@ -687,9 +688,15 @@ body.dev-phone #dash { padding-top: calc(8px + env(safe-area-inset-top)); }
 
 /* --- Phone: one pane at a time, tab bar switches --- */
 @media (max-width: 700px) {
-  /* ---------- phone: one thing at a time, nothing clipped ---------- */
+  /* ================================================================
+     Phone: the model owns the screen. Everything else is a bottom
+     sheet raised from a single work bar — one sheet at a time, always
+     dismissable, never covering more than half the view.
+     ================================================================ */
+
+  /* ---- app bar ---- */
   #dash {
-    flex-wrap: nowrap; gap: 8px; padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+    flex-wrap: nowrap; gap: 8px; padding: calc(5px + env(safe-area-inset-top)) 10px 5px;
     overflow-x: auto; scrollbar-width: none;
   }
   #dash::-webkit-scrollbar { display: none; }
@@ -697,48 +704,49 @@ body.dev-phone #dash { padding-top: calc(8px + env(safe-area-inset-top)); }
   .brand-name { font-size: 13px; letter-spacing: 2px; }
   #btn-home { width: 28px; height: 28px; font-size: 14px; }
   .dash-type { order: 3; gap: 5px; }
-  .dash-type label { display: none; }
+  .dash-type label, #dash-signature { display: none; }
   .dash-type select { padding: 5px 7px; font-size: 11.5px; }
-  #dash-signature { display: none; }
   #metric-rail {
     order: 5; width: 100%; gap: 6px; justify-content: flex-start;
-    padding-bottom: 2px; overflow-x: auto; scrollbar-width: none;
+    overflow-x: auto; scrollbar-width: none; padding-bottom: 2px;
   }
   #metric-rail::-webkit-scrollbar { display: none; }
   .metric { padding: 4px 9px; }
   .metric .m-value { font-size: 12.5px; }
 
-  /* ---------- landing: no headline, everything moves up ---------- */
+  /* ---- landing: no headline, napkin first ---- */
   #hero h1 { display: none; }
   #hero { margin: 0 0 6px; }
   #hero-name { margin-top: 0; gap: 2px; }
   .sign-guide { font-size: 9px; letter-spacing: 1.2px; }
   #author-input { width: 118px; }
   #author-date { width: 92px; }
-
-  body.landing #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  #left-col { grid-column: 1; grid-row: 1; }
-  #mid-col { grid-column: 1; grid-row: 1; }
   #napkin-wrap { justify-content: flex-start; padding: 8px 8px 4px; gap: 8px; }
-  #napkin { height: auto; width: min(94vw, 58vh); max-width: 94vw; }
+  #napkin { height: auto; width: min(94vw, 56vh); max-width: 94vw; }
   #sketch-tools { gap: 6px; margin-top: 2px; }
   #sketch-tools .seg button { min-width: 40px; }
   #kind-select { padding: 7px 10px; font-size: 11.5px; }
+  #napkin-sig .ns-name { font-size: 20px; }
+  #napkin-sig .ns-date { font-size: 11px; }
 
-  /* the rail of starter napkins, actually visible */
-  #gallery-wrap {
+  body.landing #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  #stage { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  #left-col, #mid-col { grid-column: 1; grid-row: 1; }
+
+  /* ---- starter napkins, on the landing page only ---- */
+  body.landing #gallery-wrap {
     grid-column: 1; grid-row: 2;
     border-left: none; border-top: 1px solid var(--line);
     padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
     background: #fffdf8;
   }
+  body.workspace #gallery-wrap { display: none; }
   .gal-head { flex-direction: row; gap: 8px; margin-bottom: 2px; }
   .gal-title { font-size: 10px; }
   .gal-hint { display: none; }
   #gallery {
-    flex-direction: row; align-items: flex-end;
-    overflow-x: auto; overflow-y: hidden; padding: 4px 12px 6px; gap: 10px;
+    flex-direction: row; align-items: flex-end; gap: 10px;
+    overflow-x: auto; overflow-y: hidden; padding: 4px 12px 6px;
     -webkit-mask-image: none; mask-image: none;
   }
   .nap-tile { width: 66px; }
@@ -747,83 +755,91 @@ body.dev-phone #dash { padding-top: calc(8px + env(safe-area-inset-top)); }
   .nt-name { font-size: 9px; max-width: 70px; }
   .nt-type { display: none; }
   .nap-divider { width: 1px; height: auto; align-self: stretch; margin: 8px 2px; }
-  #napkin-sig .ns-name { font-size: 20px; }
-  #napkin-sig .ns-date { font-size: 11px; }
 
-  /* ---------- workspace: the model fills the screen ---------- */
-  body.workspace #stage { grid-template-columns: 1fr; grid-template-rows: 1fr; }
-  body.workspace #stage > section { grid-column: 1; grid-row: 1; }
-  body.workspace #gallery-wrap { display: none; }
+  /* ---- workspace: model full bleed ---- */
   body.workspace.pane-model #left-col { display: none; }
   body.workspace.pane-sketch #mid-col { display: none; }
-
-  body.workspace #mobile-tabs {
-    display: flex; gap: 5px; padding: 5px 10px;
-    background: var(--panel); border-bottom: 1px solid var(--line);
-  }
-  #mobile-tabs button { padding: 6px 0; font-size: 11.5px; }
-
+  body.workspace #mobile-tabs { display: none; }          /* the work bar replaces it */
   #view-modes { padding: 6px 10px 0; gap: 3px; }
   .vmode { padding: 5px 11px; font-size: 11px; }
   #viewport { min-height: 0; }
+  .drawer-tab { display: none; }
+  #model-badge, #sel-bar { font-size: 10.5px; }
 
-  /* the two toolbars become drawers that slide in from the edges */
-  #site-bar, #model-controls {
-    position: absolute; z-index: 22; bottom: auto; left: auto; transform: none;
-    max-width: none; width: 176px;
-    flex-direction: column; align-items: stretch; flex-wrap: nowrap;
-    gap: 6px; padding: 10px;
-    background: #fffdf8f5; backdrop-filter: blur(10px);
-    border: 1px solid var(--line); border-radius: 14px;
-    box-shadow: 0 10px 30px #00000020;
-    max-height: 66%; overflow-y: auto; scrollbar-width: none;
-    transition: transform .28s cubic-bezier(.2,.8,.3,1), opacity .2s;
+  /* ---- the work bar ---- */
+  #phone-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    display: flex; align-items: stretch;
+    background: #fffdf8f7; backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
   }
-  #site-bar { top: 10px; left: 8px; transform: translateX(calc(-100% - 14px)); }
-  #model-controls { top: 10px; right: 8px; transform: translateX(calc(100% + 14px)); }
-  body.drawer-scene #site-bar { transform: none; }
-  body.drawer-tools #model-controls { transform: none; }
+  #phone-bar button {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: none; cursor: pointer;
+    font-family: var(--font-ui); font-size: 9.5px; color: var(--muted);
+    padding: 5px 2px; border-radius: 10px;
+  }
+  #phone-bar .pb-icon { font-size: 15px; line-height: 1; }
+  #phone-bar button.active { color: var(--accent); background: var(--accent-soft); }
+  #phone-bar .pb-say { color: var(--accent); font-weight: 600; }
+  body.landing #phone-bar { display: none; }
+
+  /* ---- bottom sheets: one at a time, half the screen at most ---- */
+  #site-bar, #model-controls, #params-panel, #chatbar {
+    position: fixed; left: 0; right: 0; top: auto;
+    bottom: calc(58px + env(safe-area-inset-bottom));
+    width: auto; max-width: none; z-index: 39;
+    transform: translateY(115%); transition: transform .3s cubic-bezier(.2,.85,.3,1);
+    background: var(--panel); backdrop-filter: blur(12px);
+    border: none; border-top: 1px solid var(--line);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -10px 34px #00000020;
+    max-height: 48vh; overflow-y: auto; scrollbar-width: none;
+    padding: 16px 14px 14px; margin: 0;
+    display: flex; flex-direction: column; gap: 8px; align-items: stretch;
+  }
+  #site-bar::-webkit-scrollbar, #model-controls::-webkit-scrollbar,
+  #params-panel::-webkit-scrollbar, #chatbar::-webkit-scrollbar { display: none; }
+  /* the grab handle */
+  #site-bar::before, #model-controls::before, #params-panel::before, #chatbar::before {
+    content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 2px; background: var(--line-soft);
+  }
+  body.sheet-scene  #site-bar,
+  body.sheet-tools  #model-controls,
+  body.sheet-params #params-panel,
+  body.sheet-chat   #chatbar { transform: translateY(0); }
+
+  /* sheet contents laid out for thumbs */
   #site-bar .sb-sep, #site-bar .sb-break { display: none; }
   #site-bar select, #site-bar .seg, #sun-hour { width: 100%; }
   #site-bar .seg.small { display: flex; }
-  #site-bar .seg.small button { flex: 1; }
-  #model-controls .pill-btn { width: 100%; justify-content: center; }
+  #site-bar .seg.small button { flex: 1; padding: 8px 4px; }
   #sun-readout { width: auto; text-align: center; }
+  #model-controls { flex-wrap: wrap; flex-direction: row; }
+  #model-controls .pill-btn { flex: 1 1 46%; justify-content: center; padding: 10px 8px; }
+  #params-panel { padding-top: 18px; }
 
-  /* the tabs that open them */
-  .drawer-tab {
-    position: absolute; top: 50%; z-index: 21; transform: translateY(-50%);
-    width: 26px; height: 74px; border: 1px solid var(--line);
-    background: #fffdf8ee; color: var(--ink-soft);
-    font-size: 10px; letter-spacing: 1px; writing-mode: vertical-rl;
-    display: flex; align-items: center; justify-content: center; cursor: pointer;
-  }
-  #tab-scene { left: 0; border-left: none; border-radius: 0 12px 12px 0; }
-  #tab-tools { right: 0; border-right: none; border-radius: 12px 0 0 12px; }
-  body.drawer-scene #tab-scene, body.drawer-tools #tab-tools { background: var(--ink); color: var(--paper); }
-
-  #params-panel {
-    position: absolute; left: 8px; right: 8px; top: auto; bottom: 8px;
-    width: auto; max-height: 46%; border-radius: 14px;
-    border: 1px solid var(--line); box-shadow: 0 -6px 24px #00000018;
-  }
-  #render-strip { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
-
-  /* chat: always reachable, never behind the home indicator */
-  #chatbar {
-    padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
-    gap: 5px;
-  }
-  #chat-log { max-height: 76px; }
+  /* chat sheet */
+  #chatbar { gap: 6px; }
+  #chat-log { max-height: 30vh; flex: none; }
   #chatbar .chat-row { flex-wrap: wrap; gap: 6px; }
-  #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; }  /* 16px stops iOS zooming on focus */
+  #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; padding: 11px 12px; }
   .chat-glyph { display: none; }
-  #ref-label { flex: 0 0 auto; }
-  #chatbar .build-btn.small { flex: 1; padding: 9px 10px; }
+  #chatbar .build-btn.small { flex: 1; padding: 11px 10px; }
+  #ref-label { flex: 0 0 auto; padding: 10px 14px; }
 
-  .splitter { display: none !important; }
-  #gal-preview { display: none; }
+  /* a tap on the model closes whatever is open */
+  body.sheet-scene #viewport::after, body.sheet-tools #viewport::after,
+  body.sheet-params #viewport::after, body.sheet-chat #viewport::after {
+    content: ''; position: absolute; inset: 0; z-index: 30;
+  }
+
+  #render-strip { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
+  .splitter, #gal-preview { display: none !important; }
 }
+
 
 
 /* --- stylus present: a finer nib and no palm-rejection guesswork --- */
