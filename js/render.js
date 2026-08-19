@@ -114,22 +114,23 @@ export async function writeRenderPrompt(userLine, ctx) {
       model: anthropicModel, max_tokens: 900,
       messages: [{
         role: 'user',
-        content: `You write prompts for architectural image generation (Nano Banana Pro / Gemini image), img2img from a grey untextured 3D massing render.
+        content: `You write the instruction for a MATERIAL AND LIGHT PASS over an existing 3D render. This is image EDITING, not image generation: another image (the render) supplies the building and the camera, and your text supplies only surfaces, light and atmosphere.
 
 The building: a ${ctx.typeLabel.toLowerCase()}, ${ctx.floors} storeys, ${ctx.heightM} m tall, ${ctx.structure} structure, GFA ${ctx.gfa} m².
 The designer said: "${userLine || 'make it look real'}"
 Requested style: ${ctx.styleHint || 'photorealistic'}
+Weather to match: ${ctx.weather || 'clear'}. Setting: ${ctx.setting || 'city'}.
 
-Write ONE flowing prompt paragraph (110-170 words) that covers, in this order, only where relevant: ${PROMPT_CATEGORIES.join('; ')}.
+Write ONE flowing paragraph of 90-140 words covering only: materials and finishes, lighting quality, atmosphere and sky character, ground-plane and planting treatment, entourage, and quality control.
 
-Hard rules for the text you write:
-- Open by naming the output: a photorealistic architectural photograph (or the style the designer asked for).
-- State clearly that the massing, proportions, volume arrangement and camera of the input image are preserved exactly.
-- State that the flat grey placeholder surfaces MUST be replaced with real specified architectural materials — name them concretely.
-- Add believable context, sky, lighting, landscape and a few people for scale, since the input has none.
-- End with quality control: sharp focus, correct perspective, no distorted geometry, no text or watermarks.
-- Honour every concrete thing the designer asked for.
-Return ONLY the prompt paragraph, no preamble, no quotes, no headings.`,
+ABSOLUTE PROHIBITIONS — breaking any of these ruins the render:
+- Never describe the viewpoint, camera height, angle, lens, framing or composition. Do not write "eye-level", "street view", "aerial", "wide-angle", "looking up", "from across the plaza", or any similar phrase. The camera is already fixed by the image.
+- Never describe the building's shape, height in storeys, silhouette, massing, setbacks, or how many volumes it has. The form is already fixed by the image.
+- Never say the building is centred, fully visible, or how much of it is in frame. If the image shows part of it, the result shows exactly that same part.
+- Do not invent surrounding buildings that are not in the image; you may only describe how the ones already there are finished.
+
+Write instead about: what the surfaces are made of, how the light falls, what the sky and air look like, what is on the ground, and the technical quality (sharp focus, realistic reflections, no text or watermarks).
+Return ONLY the paragraph, no preamble, no quotes, no headings.`,
       }],
     }),
   });
@@ -146,7 +147,10 @@ export async function renderImage({ snapshot, styleId, userPrompt, refDataURL, t
     ? userPrompt
     : `Re-render the INPUT IMAGE as: ${style.prompt}. The building is a ${typeLabel.toLowerCase()}.${userPrompt ? ` Art direction: ${userPrompt}.` : ''}`;
   const brief = [
-    'IMAGE 1 IS THE BUILDING. Reproduce its silhouette, storey count, proportions, setbacks and camera angle exactly. Do not invent a different building. If the prompt and IMAGE 1 disagree about form, IMAGE 1 wins.',
+    'TASK: repaint IMAGE 1. This is an edit of that exact picture, not a new picture.',
+    'Keep every edge where it is: same silhouette, same storey lines, same setbacks, same surrounding buildings, same horizon, same crop, same camera. If the building is cut off by the frame in IMAGE 1, it stays cut off in the same place.',
+    'Change ONLY the surface treatment, materials, lighting, sky and small entourage. Adding, removing, re-centring, re-framing or re-proportioning anything is a failure.',
+    'If the text below and IMAGE 1 ever disagree about form, viewpoint or framing, IMAGE 1 wins.',
     '',
     core,
     '',

@@ -520,11 +520,16 @@ async function doRender(userLine = '') {
   try {
     // ---- 1. the input image is exactly what you are looking at ----
     const s1 = step('① Capturing this exact view as the input image…');
-    if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg);
+    // a render can only be as faithful as its input: if the building is half
+    // out of frame, fit it first and say so rather than sending a sliver
+    const framing = model.buildingFraming();
+    let framed = false;
+    if (framing.visible < 0.85) { framed = model.frameBuilding(); }
     const snapshot = model.modelSnapshot();
     renderCamera = model.getCameraPose();       // lock: the render belongs to this view
     const shotSize = await new Promise(res => { const i = new Image(); i.onload = () => res(`${i.width}\u00d7${i.height}`); i.src = snapshot; });
     done(s1, `\u2460 Input image captured at ${shotSize} — this is the structure the render must follow.`);
+    if (framed) ui.addChatMsg('ai', 'The building was partly outside the frame, so I fitted the view before capturing — a render can only follow what the input image shows.');
     ui.addChatImages(refDataURL
       ? [{ url: snapshot, label: 'IMAGE 1 · your model (structure)' }, { url: refDataURL, label: 'IMAGE 2 · your reference (style only)' }]
       : [{ url: snapshot, label: 'IMAGE 1 · your model (structure)' }]);

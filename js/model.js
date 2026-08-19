@@ -419,6 +419,40 @@ export function toggleSun(on) { sunAnim = on; }
 // pitch above the horizon. Called with Claude's reading of the sketch view.
 // The render is made from one specific viewpoint; these let us pin it there so
 // the overlay and the model line up pixel for pixel.
+// How much of the building is actually inside the frame, and a camera that
+// would hold all of it. A render can only be as good as its input image: if the
+// tower is a sliver at the edge, the image model has nothing to work from.
+export function buildingFraming() {
+  if (!towerGroup || !camera) return { visible: 1 };
+  const box = new THREE.Box3().setFromObject(towerGroup);
+  if (box.isEmpty()) return { visible: 1 };
+  const corners = [];
+  for (const x of [box.min.x, box.max.x])
+    for (const y of [box.min.y, box.max.y])
+      for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));
+  let inside = 0;
+  for (const c of corners) {
+    const p = c.clone().project(camera);
+    if (p.x >= -1 && p.x <= 1 && p.y >= -1 && p.y <= 1 && p.z < 1) inside++;
+  }
+  return { visible: inside / corners.length, box };
+}
+
+export function frameBuilding(margin = 1.5) {
+  const { box } = buildingFraming();
+  if (!box) return false;
+  const size = box.getSize(new THREE.Vector3());
+  const centre = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(size.x, size.y, size.z) * 0.5;
+  const dist = (radius * margin) / Math.sin(THREE.MathUtils.degToRad(camera.fov * 0.5));
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  if (!Number.isFinite(dir.x)) dir.set(0.6, 0.35, 0.72).normalize();
+  camera.position.copy(centre.clone().add(dir.multiplyScalar(dist)));
+  controls.target.copy(centre);
+  controls.update();
+  return true;
+}
+
 export function getCameraPose() {
   if (!camera || !controls) return null;
   return {
