@@ -13,7 +13,7 @@ export const STYLES = [
 
 function cfg() {
   return {
-    key: (localStorage.getItem('napkin_gemini_key') || window.NAPKIN_CONFIG?.geminiKey || '').trim(),
+    key: String(localStorage.getItem('napkin_gemini_key') || window.NAPKIN_CONFIG?.geminiKey || '').replace(/[^!-~]/g, ''),
     model: localStorage.getItem('napkin_gemini_model') || window.NAPKIN_CONFIG?.geminiModel || 'gemini-3-pro-image-preview',
   };
 }

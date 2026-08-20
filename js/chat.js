@@ -4,12 +4,20 @@ import { state } from './model.js';
 import { TYPES } from './metrics.js';
 import { sanitizeMasses } from './interpret.js';
 
-function cfg() {
+// A key copied on a phone often arrives carrying something invisible — a
+// zero-width space, a non-breaking space, a trailing newline. fetch refuses
+// any header value outside Latin-1 and reports it as "Failed to read the
+// 'headers' property", which names nothing the user can act on. So the key is
+// reduced to printable ASCII at the one place it is read.
+export const cleanKey = v => String(v ?? '').replace(/[^!-~]/g, '');
+
+export function claudeConfig() {
   return {
-    key: localStorage.getItem('napkin_claude_key') || window.NAPKIN_CONFIG?.anthropicKey || '',
-    model: localStorage.getItem('napkin_claude_model') || window.NAPKIN_CONFIG?.anthropicModel || 'claude-sonnet-5',
+    key: cleanKey(localStorage.getItem('napkin_claude_key') || window.NAPKIN_CONFIG?.anthropicKey || ''),
+    model: cleanKey(localStorage.getItem('napkin_claude_model') || window.NAPKIN_CONFIG?.anthropicModel || 'claude-sonnet-5'),
   };
 }
+function cfg() { return claudeConfig(); }
 export function hasClaude() { return !!cfg().key; }
 
 const EDIT_SCHEMA = {

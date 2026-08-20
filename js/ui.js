@@ -292,10 +292,21 @@ export function settingsModal(onSave) {
     <button class="build-btn" id="set-save" style="width:100%; margin-top:14px">Save</button>
     <div class="settings-note">Keys live in this browser's localStorage and are sent only to their own APIs. Without keys, everything still runs on local engines — chat, vision and render fall back gracefully. Sponsor fields store credentials for the adapter stubs; wiring them is a transport swap, the data shapes are already theirs.</div>`);
   document.getElementById('set-save').onclick = () => {
-    localStorage.setItem('napkin_claude_key', document.getElementById('set-claude').value.trim());
-    localStorage.setItem('napkin_gemini_key', document.getElementById('set-gemini').value.trim());
-    for (const s of SPONSORS) localStorage.setItem(s.field, document.getElementById(`set-${s.id}`).value.trim());
+    // trim() leaves anything invisible sitting inside the string, and a single
+    // zero-width space is enough to make the browser refuse the whole request.
+    const clean = v => String(v ?? '').replace(/[^!-~]/g, '');
+    let stripped = 0;
+    const take = id => {
+      const raw = document.getElementById(id).value;
+      const out = clean(raw);
+      if (out.length !== raw.trim().length) stripped++;
+      return out;
+    };
+    localStorage.setItem('napkin_claude_key', take('set-claude'));
+    localStorage.setItem('napkin_gemini_key', take('set-gemini'));
+    for (const s of SPONSORS) localStorage.setItem(s.field, clean(document.getElementById(`set-${s.id}`).value));
     closeModal();
+    if (stripped) toast('Saved — stray invisible characters were removed from a key as it was pasted.', 4200);
     onSave?.();
   };
 }

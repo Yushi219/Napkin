@@ -10,7 +10,7 @@ import { initDevice, deviceKind, isTouch, showPane, onDeviceChange } from './dev
 import { EXAMPLES, strokesFor } from './examples.js';
 import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './gallery.js';
 import { initSplitters } from './splitters.js';
-import { interpretCommand, hasClaude } from './chat.js';
+import { interpretCommand, hasClaude, claudeConfig } from './chat.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
 
@@ -228,10 +228,21 @@ function enterWorkspace(msg) {
 }
 
 function anthropicCfg() {
-  return {
-    anthropicKey: localStorage.getItem('napkin_claude_key') || window.NAPKIN_CONFIG?.anthropicKey,
-    anthropicModel: localStorage.getItem('napkin_claude_model') || window.NAPKIN_CONFIG?.anthropicModel || 'claude-sonnet-5',
-  };
+  const { key, model } = claudeConfig();
+  return { anthropicKey: key, anthropicModel: model };
+}
+
+// fetch reports a bad header as a parse failure with no hint of which one.
+// The only header we fill in is the key, so say that plainly.
+function readFailure(e) {
+  const raw = String(e?.message || e);
+  if (/headers|ISO-8859-1|Failed to read the/i.test(raw)) {
+    return 'the API key has characters the browser cannot put in a request header — usually an invisible one picked up while copying. Open ⚙ and paste it again';
+  }
+  if (/401|authentication|invalid x-api-key/i.test(raw)) return 'the API key was rejected (401)';
+  if (/429|quota|rate/i.test(raw)) return 'the account is out of quota (429)';
+  if (/Failed to fetch|NetworkError/i.test(raw)) return 'the request could not leave the browser — check the connection';
+  return raw.slice(0, 90);
 }
 
 async function build() {
@@ -282,7 +293,7 @@ async function build() {
     } catch (e) {
       console.warn('vision read failed → local reader', e);
       const msg = hasClaude()
-        ? `Claude read failed (${String(e.message).slice(0, 60)}) — using the local silhouette reader.`
+        ? `Claude could not read the sketch — ${readFailure(e)}. Falling back to the local silhouette reader.`
         : 'This device has no Anthropic key, so the sketch was read by the local silhouette engine. Add a key in ⚙ to have Claude read it properly — it stays in this browser only.';
       ui.addChatMsg('ai', msg, 'err');
     }
