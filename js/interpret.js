@@ -8,7 +8,7 @@
 const GRID = 220;
 
 function inkMask(inkCv) {
-  const c = inkCv.getContext('2d');
+  const c = inkCv.getContext('2d', { willReadFrequently: true });
   const img = c.getImageData(0, 0, GRID, GRID).data;
   const mask = new Uint8Array(GRID * GRID);
   for (let i = 0; i < GRID * GRID; i++) mask[i] = img[i * 4] < 128 ? 1 : 0;
@@ -431,23 +431,32 @@ const MAX_EDGE = 1400;
 function claudeImage(dataURL) {
   return new Promise(resolve => {
     const done = (media, data) => resolve({ type: 'image', source: { type: 'base64', media_type: media, data } });
-    const im = new Image();
-    im.onload = () => {
-      const scale = Math.min(1, MAX_EDGE / Math.max(im.width, im.height));
-      const w = Math.max(1, Math.round(im.width * scale));
-      const h = Math.max(1, Math.round(im.height * scale));
-      const cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      const c = cv.getContext('2d');
-      c.fillStyle = '#ffffff';           // JPEG has no alpha; keep ink on white
-      c.fillRect(0, 0, w, h);
-      c.drawImage(im, 0, 0, w, h);
-      done('image/jpeg', cv.toDataURL('image/jpeg', 0.92).split(',')[1]);
-    };
-    im.onerror = () => {
+    const raw = () => {
       const semi = dataURL.indexOf(';'), comma = dataURL.indexOf(',');
-      done(semi > 5 ? dataURL.slice(5, semi) : 'image/png', dataURL.slice(comma + 1));
+      done(semi > 5 && semi < comma ? dataURL.slice(5, semi) : 'image/png', dataURL.slice(comma + 1));
     };
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => {
+      try {
+        const scale = Math.min(1, MAX_EDGE / Math.max(im.width, im.height));
+        const w = Math.max(1, Math.round(im.width * scale));
+        const h = Math.max(1, Math.round(im.height * scale));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const c = cv.getContext('2d');
+        c.fillStyle = '#ffffff';           // JPEG has no alpha; keep ink on white
+        c.fillRect(0, 0, w, h);
+        c.drawImage(im, 0, 0, w, h);
+        const data = cv.toDataURL('image/jpeg', 0.92).split(',')[1];
+        console.info('[napkin] picture for Claude:', w + '×' + h, Math.round(data.length * 0.75 / 1024) + ' KB', 'image/jpeg');
+        done('image/jpeg', data);
+      } catch (e) {
+        console.warn('[napkin] could not re-encode the picture, sending it as it came', e);
+        raw();     // a cross-origin picture taints the canvas
+      }
+    };
+    im.onerror = raw;
     im.src = dataURL;
   });
 }
