@@ -1370,12 +1370,13 @@ body.fs #viewport > #cam-pane #cam-hint { border-color: #ffffff1f; color: #b9b3a
     transform: scale(.34) rotate(9deg); filter: contrast(1.26) saturate(.68) brightness(.95);
   }
 }
-/* the arc: up and away to the right, tumbling, gone before it lands */
+/* the arc: direction, peak and spin come from the throw itself (JS custom
+   properties), so no two go to the same corner of the room */
 @keyframes lob {
   0%   { transform: translate(0, 0) scale(.34) rotate(9deg); opacity: 1; }
-  38%  { transform: translate(24vw, -30vh) scale(.26) rotate(150deg); opacity: 1; }
-  72%  { transform: translate(46vw, -4vh) scale(.18) rotate(320deg); opacity: .8; }
-  100% { transform: translate(62vw, 44vh) scale(.12) rotate(500deg); opacity: 0; }
+  38%  { transform: translate(calc(var(--lob-x, 52vw) * .42), var(--lob-peak, -30vh)) scale(.26) rotate(calc(var(--lob-spin, 500deg) * .3)); opacity: 1; }
+  72%  { transform: translate(calc(var(--lob-x, 52vw) * .76), calc(var(--lob-peak, -30vh) * .14)) scale(.18) rotate(calc(var(--lob-spin, 500deg) * .65)); opacity: .8; }
+  100% { transform: translate(var(--lob-x, 52vw), 46vh) scale(.12) rotate(var(--lob-spin, 500deg)); opacity: 0; }
 }
 @keyframes freshNapkin {
   0%   { transform: translateY(46%) scale(.86) rotate(-2.5deg); opacity: 0; }

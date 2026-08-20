@@ -303,6 +303,25 @@ async function build() {
   }
 }
 
+// The one number the drawing states beyond doubt: how wide the silhouette is
+// against how tall. Measured from the actual ink, handed to the builder as
+// ground truth to check itself against.
+function measureInkAspect() {
+  try {
+    const cv = sketch.inkCanvas(200);
+    const d = cv.getContext('2d').getImageData(0, 0, 200, 200).data;
+    let minx = 200, maxx = -1, miny = 200, maxy = -1;
+    for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) {
+      if (d[(y * 200 + x) * 4] < 120) {
+        if (x < minx) minx = x; if (x > maxx) maxx = x;
+        if (y < miny) miny = y; if (y > maxy) maxy = y;
+      }
+    }
+    if (maxx < 0 || maxy - miny < 8) return null;
+    return (maxx - minx + 1) / (maxy - miny + 1);
+  } catch { return null; }
+}
+
 async function buildPasses() {
 
   let patch = null, reading = '';
@@ -343,6 +362,7 @@ async function buildPasses() {
       let v;
       try {
         v = await agentBuildMasses(readShot, anthropicCfg(), {
+          hints: { inkAspect: measureInkAspect() },
           apply: async (masses, camera) => {
             leaveImported();
             model.applyPatch({ archetype: null, masses, profile: null, profileSide: null, footprint: null, segments: [], mode: 'massing' });
@@ -889,6 +909,11 @@ function wire() {
       return;
     }
     binning = true;
+    // a real throw never repeats: direction, arc and spin are drawn fresh
+    const dir = Math.random() < 0.42 ? -1 : 1;
+    nap.style.setProperty('--lob-x', (dir * (34 + Math.random() * 30)).toFixed(0) + 'vw');
+    nap.style.setProperty('--lob-peak', (-(22 + Math.random() * 20)).toFixed(0) + 'vh');
+    nap.style.setProperty('--lob-spin', (dir * (360 + Math.random() * 280)).toFixed(0) + 'deg');
     nap.classList.add('crumpling');
     setTimeout(() => {
       sketch.clearAll();

@@ -491,6 +491,43 @@ export function fitToEnvelope(masses, envelope) {
 // boxes, render, compare against the sketch, revise, look again, and only then
 // finish. io supplies the scene: apply(masses, camera), snapshot(), step(label).
 
+function loadImgEl(url) {
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+}
+
+// One picture, two panes: the target on the left, the model on the right.
+// Sketch2BIM and the BlenderGym line of work both find that a model corrects
+// far better against a single side-by-side than against two separate images —
+// alignment becomes something it can see, not something it must remember.
+async function pairPicture(leftURL, rightURL) {
+  try {
+    const [a, b] = await Promise.all([loadImgEl(leftURL), loadImgEl(rightURL)]);
+    const H = 560;
+    const wa = Math.round(a.width * H / a.height), wb = Math.round(b.width * H / b.height);
+    const cv = document.createElement('canvas');
+    cv.width = wa + wb + 6; cv.height = H + 26;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#ffffff'; c.fillRect(0, 0, cv.width, cv.height);
+    c.drawImage(a, 0, 26, wa, H);
+    c.drawImage(b, wa + 6, 26, wb, H);
+    c.fillStyle = '#111'; c.fillRect(wa, 0, 6, cv.height);
+    c.font = 'bold 15px sans-serif';
+    c.fillText('TARGET — the drawing', 8, 18);
+    c.fillText('CURRENT MODEL', wa + 14, 18);
+    return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: cv.toDataURL('image/jpeg', 0.88).split(',')[1] } };
+  } catch { return null; }
+}
+
+// Numbers measured by code, not recalled by the model — the loop trusts these.
+function massExtents(masses) {
+  if (!masses?.length) return '';
+  const xs = masses.flatMap(m => [m.x - m.w / 2, m.x + m.w / 2]);
+  const zs = masses.flatMap(m => [m.z - m.d / 2, m.z + m.d / 2]);
+  const top = Math.max(...masses.map(m => m.y + m.h));
+  const w = Math.max(...xs) - Math.min(...xs), d = Math.max(...zs) - Math.min(...zs);
+  return `Measured: the composition is ${w.toFixed(1)} m wide, ${d.toFixed(1)} m deep, ${top.toFixed(1)} m to the top, ${masses.length} volumes.`;
+}
+
 const BUILDER_TOOLS = [
   { name: 'set_scene',
     description: 'Replace the whole composition with these boxes. Use once, for the first draft. Include the camera matching the sketch viewpoint.',
@@ -532,7 +569,9 @@ SIZE. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 
 
 CAMERA. yawDeg 0 faces the front facade, positive walks right (front+right two-point perspective ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35).
 
-When you look: judge RELATIONS first (what should touch, align, overhang), then proportions, then camera. Fix what is wrong, not what is merely different in style - the render is deliberately plain boxes.`;
+OPENINGS. A loggia, porch, portal or roofless frame is never a solid box. Build it open, from thin members 0.3-0.6 m thick: two legs and a lintel for a portal, an L or U of slabs for a loggia, four bars for a roofless frame. If the drawing shows daylight through it, the model must show daylight through it.
+
+When you look: judge RELATIONS first (what should touch, align, overhang), then proportions against countable storeys, then openings (holes the drawing shows that the model lacks), then camera. Fix what is wrong, not what is merely different in style - the render is deliberately plain boxes.`;
 
 export async function agentBuildMasses(dataURL, cfg, io) {
   if (!cfg.anthropicKey) return null;
@@ -543,9 +582,12 @@ export async function agentBuildMasses(dataURL, cfg, io) {
     'anthropic-version': '2023-06-01',
     'anthropic-dangerous-direct-browser-access': 'true',
   };
+  const hint = io.hints?.inkAspect
+    ? `\n\nMEASURED FROM THE DRAWING (by code, trust it): the ink silhouette is ${io.hints.inkAspect.toFixed(2)} times as wide as it is tall. From your declared camera the finished composition must fill that same proportion - check it on every look.`
+    : '';
   const messages = [{ role: 'user', content: [
     sketchPic,
-    { type: 'text', text: BUILDER_BRIEF + '\n\nHere is the sketch. Begin with set_scene.' },
+    { type: 'text', text: BUILDER_BRIEF + hint + '\n\nHere is the sketch. Begin with set_scene.' },
   ] }];
 
   let masses = null, camera = null, finished = null, looks = 0;
@@ -569,7 +611,9 @@ export async function agentBuildMasses(dataURL, cfg, io) {
         io.step?.('Claude placed ' + (masses?.length || 0) + ' volumes…');
         if (masses) await io.apply(masses, camera);
         results.push({ type: 'tool_result', tool_use_id: call.id,
-          content: masses ? 'Scene set: ' + masses.length + ' volumes. look to see it.' : 'No usable boxes in that input.' });
+          content: masses
+            ? 'Scene set: ' + masses.length + ' volumes. ' + massExtents(masses) + ' Audit the boxes against your own prose - every storey count and dimension you stated must actually appear - then look.'
+            : 'No usable boxes in that input.' });
       } else if (call.name === 'update_scene') {
         if (masses) {
           const byId = new Map(masses.map(m => [m.id, m]));
@@ -593,12 +637,14 @@ export async function agentBuildMasses(dataURL, cfg, io) {
         looks++;
         io.step?.('Rendering for Claude — look ' + looks + '…');
         const shot = await io.snapshot();
-        const pic = await claudeImage(shot);
+        const pic = (await pairPicture(dataURL, shot)) || (await claudeImage(shot));
         results.push({ type: 'tool_result', tool_use_id: call.id, content: [
           pic,
-          { type: 'text', text: 'Render ' + looks + (looks >= 3
-            ? '. That was your last look - correct anything left and finish.'
-            : '. Compare it with the sketch: relations, proportions, camera.') },
+          { type: 'text', text: 'Look ' + looks + ': the target drawing on the left, your model on the right, from your declared camera. '
+            + massExtents(masses)
+            + (looks >= 4
+              ? ' That was your last look - correct anything left and finish.'
+              : ' Compare pane against pane: relations, storey counts, openings, silhouette proportion, camera.') },
         ] });
       } else if (call.name === 'finish') {
         finished = call.input || {};
