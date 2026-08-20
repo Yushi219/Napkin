@@ -5,6 +5,8 @@
 // photos go through the exact same pipeline. Claude vision (optional, key needed)
 // is only an adviser for uploaded photos — never a dependency.
 
+import { gptVisionCompat, hasGPT } from './gptcore.js';
+
 const GRID = 220;
 
 function inkMask(inkCv) {
@@ -667,17 +669,9 @@ export async function agentBuildMasses(dataURL, cfg, io) {
 }
 
 export async function visionMasses(dataURL, cfg) {
-  if (!cfg.anthropicKey) return null;
+  if (!hasGPT()) return null;
   const picture = await claudeImage(dataURL);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': cfg.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
+  const { text, stopReason } = await gptVisionCompat({
       model: cfg.anthropicModel, max_tokens: 8000,
       messages: [{
         role: 'user',
@@ -713,12 +707,8 @@ Then output ONLY this JSON, nothing after it:
 Max 10 boxes. h = storeys × the storey height you chose in stage 2, wherever storeys were counted. camera = the sketch's viewpoint: yawDeg 0 faces the front (+z) facade; positive yaw walks around to the right (two-point perspective showing front+right ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35). Ignore ground lines, hatching, people, trees.` },
         ],
       }],
-    }),
-  });
-  if (!res.ok) throw await apiError(res, 'vision');
-  const data = await res.json();
-  const text = (data.content || []).map(b => b.text || '').join('');
-  const parsed = parseJsonLoose(text, data.stop_reason);
+    }, 'vision');
+  const parsed = parseJsonLoose(text, stopReason);
   const masses = fitToEnvelope(sanitizeMasses(parsed.masses), parsed.envelope);
   if (!masses) throw new Error('no usable masses');
   const cam = parsed.camera && Number.isFinite(+parsed.camera.yawDeg)
@@ -732,19 +722,11 @@ Max 10 boxes. h = storeys × the storey height you chose in stage 2, wherever st
 // (IR3D-Bench, SceneCraft, SEIG) shows this loop is the single biggest
 // fidelity lever — spatial alignment improves monotonically over passes.
 export async function visionRefine(sketchDataURL, renderDataURL, masses, camera, cfg) {
-  if (!cfg.anthropicKey) return null;
+  if (!hasGPT()) return null;
   // both pictures are fitted before the body is built — claudeImage decodes
   // through an <img>, so it has to be awaited, not dropped into the array
   const [imgA, imgB] = await Promise.all([claudeImage(sketchDataURL), claudeImage(renderDataURL)]);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': cfg.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
+  const { text, stopReason } = await gptVisionCompat({
       model: cfg.anthropicModel, max_tokens: 8000,
       messages: [{
         role: 'user',
@@ -774,12 +756,8 @@ Output ONLY this JSON, nothing after it:
  "changes":"<=25 words summarising the fixes"}` },
         ],
       }],
-    }),
-  });
-  if (!res.ok) throw await apiError(res, 'refine');
-  const data = await res.json();
-  const text = (data.content || []).map(b => b.text || '').join('');
-  const parsed = parseJsonLoose(text, data.stop_reason);
+    }, 'refine');
+  const parsed = parseJsonLoose(text, stopReason);
   const edited = sanitizeMasses(parsed.masses);
   if (!edited) throw new Error('no usable masses in refine');
   const cam = parsed.camera && Number.isFinite(+parsed.camera.yawDeg)
@@ -791,17 +769,9 @@ Output ONLY this JSON, nothing after it:
 // Red-pen annotation on the 3D view + a comment -> edited masses.
 // The 3D-native version of commenting on a design.
 export async function visionAnnotatedEdit(annotatedDataURL, comment, masses, cfg) {
-  if (!cfg.anthropicKey) return null;
+  if (!hasGPT()) return null;
   const picture = await claudeImage(annotatedDataURL);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': cfg.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
+  const { text, stopReason } = await gptVisionCompat({
       model: cfg.anthropicModel, max_tokens: 8000,
       messages: [{
         role: 'user',
@@ -818,12 +788,8 @@ Answer ONLY JSON:
  "reply": "<= 16 words on what you changed"}` },
         ],
       }],
-    }),
-  });
-  if (!res.ok) throw await apiError(res, 'vision edit');
-  const data = await res.json();
-  const text = (data.content || []).map(b => b.text || '').join('');
-  const parsed = parseJsonLoose(text, data.stop_reason);
+    }, 'vision edit');
+  const parsed = parseJsonLoose(text, stopReason);
   const edited = sanitizeMasses(parsed.masses);
   if (!edited) throw new Error('no usable masses in edit');
   return { masses: edited, reply: String(parsed.reply || 'Changed.').slice(0, 120) };
@@ -831,17 +797,9 @@ Answer ONLY JSON:
 
 // Claude vision: full massing decomposition of a rendering — the smart reverse path.
 export async function visionParams(dataURL, cfg) {
-  if (!cfg.anthropicKey) return null;
+  if (!hasGPT()) return null;
   const picture = await claudeImage(dataURL);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': cfg.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
+  const { text, stopReason } = await gptVisionCompat({
       model: cfg.anthropicModel, max_tokens: 500,
       messages: [{
         role: 'user',
@@ -858,12 +816,8 @@ export async function visionParams(dataURL, cfg) {
  "notes": "<12 words on what you saw"}` },
         ],
       }],
-    }),
-  });
-  if (!res.ok) throw await apiError(res, 'vision');
-  const data = await res.json();
-  const text = (data.content || []).map(b => b.text || '').join('');
-  return parseJsonLoose(text, data.stop_reason);
+    }, 'vision');
+  return parseJsonLoose(text, stopReason);
 }
 
 // ---------------- optional adviser: Claude vision on photos ----------------
@@ -871,15 +825,7 @@ export async function visionParams(dataURL, cfg) {
 export async function claudeAdvise(photoDataURL, cfg) {
   if (!cfg.anthropicKey || !photoDataURL) return null;
   const picture = await claudeImage(photoDataURL);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': cfg.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
+  const { text, stopReason } = await gptVisionCompat({
       model: cfg.anthropicModel, max_tokens: 300,
       messages: [{
         role: 'user',
@@ -888,10 +834,6 @@ export async function claudeAdvise(photoDataURL, cfg) {
           { type: 'text', text: 'This is a napkin sketch of a building. Answer ONLY JSON: {"view":"plan|elevation","floors":int|null,"notes":"<12 words"}. floors only if the sketch clearly indicates storey count (drawn lines or a written number).' },
         ],
       }],
-    }),
-  });
-  if (!res.ok) throw await apiError(res, 'vision');
-  const data = await res.json();
-  const text = (data.content || []).map(b => b.text || '').join('');
-  return parseJsonLoose(text, data.stop_reason);
+    }, 'vision');
+  return parseJsonLoose(text, stopReason);
 }

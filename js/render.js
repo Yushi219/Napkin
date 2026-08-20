@@ -1,3 +1,4 @@
+import { gptVisionCompat, hasGPT } from './gptcore.js';
 // Nano Banana Pro (Gemini image) — img2img, following the proven promptitect
 // call pattern: x-goog-api-key header, role-labelled image parts (INPUT IMAGE
 // preserves geometry/camera; references are style-only), responseModalities
@@ -100,18 +101,9 @@ const PROMPT_CATEGORIES = [
 ];
 
 export async function writeRenderPrompt(userLine, ctx) {
-  const { anthropicKey, anthropicModel } = ctx;
-  if (!anthropicKey) return null;
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: anthropicModel, max_tokens: 900,
+  if (!hasGPT()) return null;
+  const { text: written } = await gptVisionCompat({
+      max_tokens: 900,
       messages: [{
         role: 'user',
         content: `You write the instruction for a MATERIAL AND LIGHT PASS over an existing 3D render. This is image EDITING, not image generation: another image (the render) supplies the building and the camera, and your text supplies only surfaces, light and atmosphere.
@@ -132,11 +124,8 @@ ABSOLUTE PROHIBITIONS — breaking any of these ruins the render:
 Write instead about: what the surfaces are made of, how the light falls, what the sky and air look like, what is on the ground, and the technical quality (sharp focus, realistic reflections, no text or watermarks).
 Return ONLY the paragraph, no preamble, no quotes, no headings.`,
       }],
-    }),
-  });
-  if (!res.ok) throw new Error('prompt writer ' + res.status);
-  const data = await res.json();
-  return (data.content || []).map(b => b.text || '').join('').trim();
+  }, 'prompt writer');
+  return (written || '').trim();
 }
 
 export async function renderImage({ snapshot, styleId, userPrompt, refDataURL, typeLabel }) {

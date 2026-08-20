@@ -1,6 +1,6 @@
 // Orchestration: landing → workspace, sketch → parameters → model → metrics → render.
 import * as sketch from './sketch.js';
-import { interpretViews, interpretMassing, visionMasses, agentBuildMasses, visionAnnotatedEdit, visionRefine, imageInkCanvas } from './interpret.js';
+import { interpretViews, interpretMassing, visionMasses, visionAnnotatedEdit, visionRefine, imageInkCanvas } from './interpret.js';
 import * as model from './model.js';
 import { compute, TYPES } from './metrics.js';
 import { renderImage, hasGemini, conceptModelImage, writeRenderPrompt } from './render.js';
@@ -10,7 +10,7 @@ import { initDevice, deviceKind, isTouch, showPane, onDeviceChange } from './dev
 import { EXAMPLES, strokesFor } from './examples.js';
 import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './gallery.js';
 import { initSplitters } from './splitters.js';
-import { interpretCommand, hasClaude, claudeConfig } from './chat.js';
+import { interpretCommand, hasAI } from './chat.js';
 import { gptBuildMasses, hasGPT } from './openai.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
@@ -272,11 +272,9 @@ function enterWorkspace(msg) {
   return true;
 }
 
-// every caller of this is a vision read, so it carries the reading model
-function anthropicCfg() {
-  const { key, visionModel } = claudeConfig();
-  return { anthropicKey: key, anthropicModel: visionModel };
-}
+// The vision one-shots keep a cfg parameter for shape; the OpenAI key is
+// read inside the transport, so there is nothing to pass any more.
+function anthropicCfg() { return {}; }
 
 // fetch reports a bad header as a parse failure with no hint of which one.
 // The only header we fill in is the key, so say that plainly.
@@ -326,7 +324,7 @@ function measureInkAspect() {
 async function buildPasses() {
 
   let patch = null, reading = '';
-  if (hasClaude() || hasGPT()) {
+  if (hasAI() || hasGPT()) {
     $('btn-build').disabled = true;
     lastSketchShot = sketch.sketchDataURL();
 
@@ -374,18 +372,11 @@ async function buildPasses() {
         snapshot: () => model.modelSnapshot(1100),
         step: label => { ui.veil(true, label); busy.textContent = label; },
       };
-      const preferGpt = (localStorage.getItem('napkin_builder_engine') === 'gpt' && hasGPT()) || !hasClaude();
-      const engines = [];
-      if (hasGPT()) engines.push(['ChatGPT', () => gptBuildMasses(readShot, io)]);
-      if (hasClaude()) engines.push(['Claude', () => agentBuildMasses(readShot, anthropicCfg(), io)]);
-      if (!preferGpt) engines.reverse();
       let v = null, engineUsed = '';
-      for (const [label, run] of engines) {
-        try {
-          v = await run(); engineUsed = label; agentRan = true; break;
-        } catch (agentErr) { console.warn(label + ' builder failed', agentErr); }
-      }
-      if (!v && hasClaude()) {
+      try {
+        v = await gptBuildMasses(readShot, io); engineUsed = 'ChatGPT'; agentRan = true;
+      } catch (agentErr) { console.warn('ChatGPT builder failed', agentErr); }
+      if (!v && hasAI()) {
         ui.veil(true, 'pass 2 — reading volumes and storeys…');
         v = await visionMasses(readShot, anthropicCfg());
       }
@@ -405,9 +396,9 @@ async function buildPasses() {
       if (v.camera) pendingCamera = v.camera;
     } catch (e) {
       console.warn('vision read failed → local reader', e);
-      const msg = hasClaude()
-        ? `Claude could not read the sketch — ${readFailure(e)}. Falling back to the local silhouette reader.`
-        : 'This device has no AI key, so the sketch was read by the local silhouette engine. Add an Anthropic or OpenAI key in ⚙ — it stays in this browser only.';
+      const msg = hasAI()
+        ? `ChatGPT could not read the sketch — ${readFailure(e)}. Falling back to the local silhouette reader.`
+        : 'This device has no OpenAI key, so the sketch was read by the local silhouette engine. Add one in ⚙ — it stays in this browser only.';
       ui.addChatMsg('ai', msg, 'err');
     }
     $('btn-build').disabled = false;
@@ -430,7 +421,7 @@ async function buildPasses() {
   if (reading) ui.addChatMsg('ai', `“${reading}”`);
   // The builder loop already looked at itself; only the one-shot fallback
   // still benefits from an automatic render-compare-correct pass.
-  if (patch.masses && hasClaude() && lastSketchShot && !agentRanOnLastBuild) await runRefine(true);
+  if (patch.masses && hasAI() && lastSketchShot && !agentRanOnLastBuild) await runRefine(true);
 }
 
 let agentRanOnLastBuild = false;
@@ -443,7 +434,7 @@ let conceptURL = null;
 
 async function runRefine(auto = false) {
   if (!model.state.masses?.length) { if (!auto) ui.addChatMsg('ai', 'Refine works on the AI composition — press Update ↻ first.', 'err'); return; }
-  if (!hasClaude() || !lastSketchShot) { if (!auto) ui.addChatMsg('ai', 'Refine needs the sketch and an Anthropic key.', 'err'); return; }
+  if (!hasAI() || !lastSketchShot) { if (!auto) ui.addChatMsg('ai', 'Refine needs the sketch and an OpenAI key.', 'err'); return; }
   const busy = ui.addChatMsg('ai', auto ? 'Self-check: comparing the model against your sketch…' : 'Comparing the model against your sketch…', 'busy');
   if ($('btn-refine')) $('btn-refine').disabled = true;
   ui.veil(true, 'checking the model against your sketch…');
@@ -606,7 +597,7 @@ async function decomposeRender(dataURL) {
   ui.veil(true, 'decomposing the image into massing…');
   try {
     let patch = null, notes = '';
-    if (hasClaude()) {
+    if (hasAI()) {
       try {
         const v = await visionMasses(dataURL, anthropicCfg());
         patch = {
@@ -620,7 +611,7 @@ async function decomposeRender(dataURL) {
     if (!patch) {
       patch = interpretMassing(await imageInkCanvas(dataURL), model.state);
       if (patch) { patch.masses = null; patch.reading = null; }
-      notes = 'silhouette fallback — add an Anthropic key for intent-level decomposition';
+      notes = 'silhouette fallback — add an OpenAI key for intent-level decomposition';
     }
     if (!patch) { ui.toast('I could not find a building in that image.'); return; }
     leaveImported();
@@ -671,12 +662,11 @@ async function doRender(userLine = '') {
 
     // ---- 2. one sentence becomes a full brief ----
     let brief = userLine;
-    if (hasClaude()) {
+    if (hasAI()) {
       const s2 = step('② Writing the render brief from your words…');
       ui.veil(true, 'writing the brief…');
       try {
         const written = await writeRenderPrompt(userLine, {
-          ...anthropicCfg(),
           typeLabel: m.type.label,
           floors: model.state.floors,
           heightM: Math.round(m.stats.height),
@@ -697,7 +687,7 @@ async function doRender(userLine = '') {
         s2.textContent = `② Brief writer failed (${String(e.message).slice(0, 70)}) — using your words as written.`;
       }
     } else {
-      step('② No Anthropic key — sending your words straight through.', '');
+      step('② No OpenAI key — sending your words straight through.', '');
     }
 
     // ---- 3. the actual image model ----
@@ -765,7 +755,7 @@ async function onChat() {
     // red-pen annotation + note → vision edit of the composition
     if (annotationActive()) {
       ui.addChatMsg('user', `✏ ${text}`);
-      if (!hasClaude()) { ui.addChatMsg('ai', 'The red pen needs an Anthropic key — add one in ⚙.', 'err'); return; }
+      if (!hasAI()) { ui.addChatMsg('ai', 'The red pen needs an OpenAI key — add one in ⚙.', 'err'); return; }
       if (!model.state.masses?.length) {
         ui.addChatMsg('ai', 'The red pen edits the AI composition, but this model came from the local reader. Press Update ↻ so Claude reads the sketch into volumes first.', 'err');
         clearAnnotation();
@@ -904,7 +894,7 @@ function wire() {
   $('tool-erase').addEventListener('click', () => setTool('erase'));
   $('tool-undo').addEventListener('click', () => {
     sketch.undo();
-    if (built) { leaveImported(); refresh({ reinterpret: !hasClaude() }); }
+    if (built) { leaveImported(); refresh({ reinterpret: !hasAI() }); }
   });
   // Screwing up a bad sketch and lobbing it is what this button means, so it
   // does that: crumple, throw, and a clean one floats up. The ink is cleared
@@ -955,8 +945,8 @@ function wire() {
   let nudged = false;
   sketch.initSketch($('sketch-canvas'), () => {
     if (!built) return;
-    if (hasClaude()) {
-      if (!nudged) { ui.toast('Sketch changed — press Update ↻ and Claude re-reads it.', 2600); nudged = true; setTimeout(() => nudged = false, 15000); }
+    if (hasAI()) {
+      if (!nudged) { ui.toast('Sketch changed — press Update ↻ and ChatGPT re-reads it.', 2600); nudged = true; setTimeout(() => nudged = false, 15000); }
     } else { leaveImported(); refresh({ reinterpret: true }); }
   });
 

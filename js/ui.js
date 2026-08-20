@@ -2,7 +2,6 @@
 import { METRIC_DEFS } from './metrics.js';
 import { STYLES } from './render.js';
 import { SPONSORS, sponsorStatus, stream } from './versions.js';
-import { CLAUDE_MODELS } from './chat.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -311,19 +310,8 @@ export function settingsModal(onSave) {
   openModal(`
     <div class="modal-kicker">Settings</div>
     <div class="modal-title" style="font-size:20px">Engines & platforms</div>
-    <div class="settings-row"><label>Anthropic API key — chat modelling + photo vision</label>
-      <input id="set-claude" type="password" placeholder="sk-ant-…" value="${esc(g('napkin_claude_key') || (window.NAPKIN_CONFIG?.anthropicKey ?? ''))}" /></div>
-    <div class="settings-row"><label>Model for reading a drawing — the hardest job here, spatial reasoning</label>
-      <select id="set-vision-model">${CLAUDE_MODELS.map(m => `<option ${g('napkin_claude_vision_model') === m || (!g('napkin_claude_vision_model') && m === 'claude-opus-5') ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
-    <div class="settings-row"><label>Model for chat edits — quick changes to numbers that exist</label>
-      <select id="set-chat-model">${CLAUDE_MODELS.map(m => `<option ${g('napkin_claude_model') === m || (!g('napkin_claude_model') && m === 'claude-sonnet-5') ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
-    <div class="settings-row"><label>OpenAI API key — ChatGPT as an alternative builder engine</label>
+    <div class="settings-row"><label>OpenAI API key — reads the drawing, builds and edits the model</label></label>
       <input id="set-openai" type="password" placeholder="sk-proj-…" value="${esc(g('napkin_openai_key') || (window.NAPKIN_CONFIG?.openaiKey ?? ''))}" /></div>
-    <div class="settings-row"><label>Builder engine — who reads the drawing and drives the model</label>
-      <select id="set-engine">
-        <option value="claude" ${g('napkin_builder_engine') !== 'gpt' ? 'selected' : ''}>Claude builder loop (default)</option>
-        <option value="gpt" ${g('napkin_builder_engine') === 'gpt' ? 'selected' : ''}>ChatGPT builder loop</option>
-      </select></div>
     <div class="settings-row"><label>OpenAI model for the builder</label>
       <input id="set-openai-model" placeholder="gpt-5.1" value="${esc(g('napkin_openai_model'))}" /></div>
     <div class="settings-row"><label>Gemini API key — Nano Banana Pro renders</label>
@@ -343,13 +331,9 @@ export function settingsModal(onSave) {
       if (out.length !== raw.trim().length) stripped++;
       return out;
     };
-    localStorage.setItem('napkin_claude_key', take('set-claude'));
     localStorage.setItem('napkin_gemini_key', take('set-gemini'));
     localStorage.setItem('napkin_openai_key', take('set-openai'));
-    localStorage.setItem('napkin_builder_engine', document.getElementById('set-engine').value);
     localStorage.setItem('napkin_openai_model', clean(document.getElementById('set-openai-model').value));
-    localStorage.setItem('napkin_claude_vision_model', document.getElementById('set-vision-model').value);
-    localStorage.setItem('napkin_claude_model', document.getElementById('set-chat-model').value);
     for (const s of SPONSORS) localStorage.setItem(s.field, clean(document.getElementById(`set-${s.id}`).value));
     closeModal();
     if (stripped) toast('Saved — stray invisible characters were removed from a key as it was pasted.', 4200);

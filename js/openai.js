@@ -8,21 +8,8 @@ import {
   pairPicture, massExtents,
 } from './interpret.js';
 
-const clean = v => String(v ?? '').replace(/[^\x21-\x7E]/g, '');
-
-export function openaiConfig() {
-  return {
-    key: clean(localStorage.getItem('napkin_openai_key') || window.NAPKIN_CONFIG?.openaiKey || ''),
-    model: clean(localStorage.getItem('napkin_openai_model') || window.NAPKIN_CONFIG?.openaiModel || 'gpt-5.1'),
-  };
-}
-export function hasGPT() { return !!openaiConfig().key; }
-
-async function gptError(res) {
-  let detail = '';
-  try { const b = await res.json(); detail = b?.error?.message || ''; } catch { /* not JSON */ }
-  return new Error(`gpt builder ${res.status}${detail ? ': ' + detail : ''}`);
-}
+import { gptConfig as openaiConfig, hasGPT, gptError } from './gptcore.js';
+export { openaiConfig, hasGPT };
 
 const TOOLS = BUILDER_TOOLS.map(t => ({
   type: 'function',
@@ -52,7 +39,7 @@ export async function gptBuildMasses(dataURL, io) {
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
       body: JSON.stringify({ model, messages, tools: TOOLS, tool_choice: 'auto', max_completion_tokens: 5000 }),
     });
-    if (!res.ok) throw await gptError(res);
+    if (!res.ok) throw await gptError(res, 'gpt builder');
     const data = await res.json();
     const msg = data.choices?.[0]?.message;
     if (!msg) break;

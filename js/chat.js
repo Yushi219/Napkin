@@ -3,6 +3,7 @@
 import { state } from './model.js';
 import { TYPES } from './metrics.js';
 import { sanitizeMasses } from './interpret.js';
+import { gptVisionCompat, hasGPT } from './gptcore.js';
 
 // A key copied on a phone often arrives carrying something invisible — a
 // zero-width space, a non-breaking space, a trailing newline. fetch refuses
@@ -11,21 +12,9 @@ import { sanitizeMasses } from './interpret.js';
 // reduced to printable ASCII at the one place it is read.
 export const cleanKey = v => String(v ?? '').replace(/[^!-~]/g, '');
 
-// Reading a drawing into volumes is a spatial-reasoning job and the hardest
-// thing this app asks of a model, so it gets the strongest one by default.
-// Conversational edits stay on the quicker model — they are one-line changes
-// to numbers that already exist.
-export const CLAUDE_MODELS = ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5'];
-
-export function claudeConfig() {
-  return {
-    key: cleanKey(localStorage.getItem('napkin_claude_key') || window.NAPKIN_CONFIG?.anthropicKey || ''),
-    model: cleanKey(localStorage.getItem('napkin_claude_model') || window.NAPKIN_CONFIG?.anthropicModel || 'claude-sonnet-5'),
-    visionModel: cleanKey(localStorage.getItem('napkin_claude_vision_model') || window.NAPKIN_CONFIG?.anthropicVisionModel || 'claude-opus-5'),
-  };
-}
-function cfg() { return claudeConfig(); }
-export function hasClaude() { return !!cfg().key; }
+// One engine for everything spoken: ChatGPT. hasAI answers whether any
+// AI edit path is live on this device.
+export function hasAI() { return hasGPT(); }
 
 const EDIT_SCHEMA = {
   floors: 'int 2..70', floorHeight: 'number 2.8..5.5 (metres)', baseWidth: 'number 14..60',
@@ -35,30 +24,19 @@ const EDIT_SCHEMA = {
   masses: 'ONLY if state.masses is set: the FULL edited array of {role,w,d,h,x,y,z,rotY,facade:slats-v|slats-h|glass|solid,cantilever}. Edit the volumes the user names ("the cantilever", "the tower"), keep the rest untouched.',
 };
 
-async function claudeEdit(text, ctx = {}) {
-  const { key, model } = cfg();
+async function gptEdit(text, ctx = {}) {
   const pointing = ctx.selectedRoles?.length
     ? `\nThe user has SELECTED these volumes in the 3D view and is talking about them: ${ctx.selectedRoles.join(', ')}. Apply the edit to the selected volumes unless they clearly say otherwise.`
     : '';
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json', 'x-api-key': key,
-      'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model, max_tokens: 400,
-      system: `You edit a parametric building. Current state: ${JSON.stringify(state)}.
+  const { text: t } = await gptVisionCompat({
+    max_tokens: 500,
+    system: `You edit a parametric building. Current state: ${JSON.stringify(state)}.
 Editable fields and ranges: ${JSON.stringify(EDIT_SCHEMA)}.${pointing}
 The user speaks casually (English or Chinese). Reply ONLY JSON:
 {"edits": {field: value, ...}, "reply": "<one warm sentence, <=18 words, saying what you did>"}
 Relative asks ("taller", "高一点") adjust from current values. If nothing is editable, return empty edits and explain briefly in reply.`,
-      messages: [{ role: 'user', content: text }],
-    }),
-  });
-  if (!res.ok) throw new Error('claude ' + res.status);
-  const data = await res.json();
-  const t = (data.content || []).map(b => b.text || '').join('');
+    messages: [{ role: 'user', content: text }],
+  }, 'chat edit');
   return JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1));
 }
 
@@ -127,8 +105,8 @@ const CLAMP = {
 
 export async function interpretCommand(text, ctx = {}) {
   let out;
-  if (hasClaude()) {
-    try { out = await claudeEdit(text, ctx); }
+  if (hasAI()) {
+    try { out = await gptEdit(text, ctx); }
     catch (e) { console.warn('claude chat failed → local', e); out = localEdit(text); out.engine = 'local (Claude unreachable)'; }
   } else out = localEdit(text);
 
@@ -136,5 +114,5 @@ export async function interpretCommand(text, ctx = {}) {
   for (const [k, v] of Object.entries(out.edits || {})) {
     if (CLAMP[k] !== undefined && v !== null && v !== undefined) clean[k] = CLAMP[k](v);
   }
-  return { edits: clean, reply: out.reply || 'Done.', engine: out.engine || (hasClaude() ? 'claude' : 'local') };
+  return { edits: clean, reply: out.reply || 'Done.', engine: out.engine || (hasAI() ? 'gpt' : 'local') };
 }
