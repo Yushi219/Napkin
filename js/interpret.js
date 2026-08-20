@@ -547,14 +547,14 @@ export const BUILDER_TOOLS = [
     description: 'Render the current model from the declared camera and see the picture. Use after every set_scene or update_scene.',
     input_schema: { type: 'object', properties: {} } },
   { name: 'finish',
-    description: 'The render matches the sketch. Hand the reading over.',
+    description: 'The model is a faithful replica of the input image, massing and details both. Hand the reading over.',
     input_schema: { type: 'object', properties: {
       reading: { type: 'string' }, type: { type: 'string' }, floorsHint: { type: 'number' },
       envelope: { type: 'object', properties: { w: { type: 'number' }, d: { type: 'number' }, h: { type: 'number' } } },
     }, required: ['reading'] } },
 ];
 
-export const BUILDER_BRIEF = `You are rebuilding the massing in this sketch as boxes in a live 3D scene, the way you would drive a CAD program: place, look, correct.
+export const BUILDER_BRIEF = `You are driving Rhino-style parametric modelling to REPLICATE the building in the input image, accurately - a faithful reconstruction, not a loose interpretation. Consistency is the whole job, at both levels: the main massing (how many volumes, how they stack, shift and cantilever) and the details (every secondary box, canopy, loggia, opening, setback and frame the image shows). Nothing the image shows may be missing; nothing it does not show may be invented. Work the way a modeller drives a CAD program: place, look, correct.
 
 WORKFLOW - follow it exactly:
 1. set_scene with your full first draft: every box, and the camera matching the sketch viewpoint.
