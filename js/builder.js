@@ -23,7 +23,7 @@ import {
   MASS_SCHEMA as FULL_MASS_SCHEMA, sanitizeMasses, fitToEnvelope, claudeImage, pairPicture,
   massExtents, geometryAudit, cropReferenceImage, zoomTiles, silhouetteMetrics,
 } from './interpret.js';
-import { claudeToolCall, claudeTurn, hasClaude } from './claudecore.js';
+import { claudeToolCall, claudeTurn, hasClaude, claudeConfig } from './claudecore.js';
 
 // Claude is not strict-validated the way OpenAI is, so demand only the core
 // fields and let sanitizeMasses fill the rest with sane defaults.
@@ -102,7 +102,7 @@ async function independentReview(pairPic, forensicsReport, io, round) {
       pairPic,
       { type: 'text', text: 'Left: the reference. Right: the reconstruction from its declared camera. Report.' },
     ],
-    tool: REVIEW_TOOL, maxTokens: 3000,
+    tool: REVIEW_TOOL, maxTokens: 3000, model: claudeConfig().reviewerModel,
   }, 'review');
 }
 
@@ -164,7 +164,7 @@ export async function buildWithProtocol(rawTargetURL, io) {
     return masses;
   };
 
-  for (let turn = 0; turn < 16 && !finished; turn++) {
+  for (let turn = 0; turn < 12 && !finished; turn++) {
     const data = await claudeTurn({ system: BUILD_SYSTEM, messages, tools: BUILD_TOOLS }, 'builder');
     messages.push({ role: 'assistant', content: data.content });
     const calls = (data.content || []).filter(b => b.type === 'tool_use');
@@ -198,11 +198,15 @@ export async function buildWithProtocol(rawTargetURL, io) {
         const shot = await io.snapshot();
         const pair = (await pairPicture(targetURL, shot)) || (await claudeImage(shot));
         const geo = geometryAudit(masses, survey.envelope);
-        lastReview = await independentReview(pair, survey, io, looks).catch(e => {
-          console.warn('reviewer unavailable this round', e);
-          return null;
-        });
-        reviews += lastReview ? 1 : 0;
+        // three verdicts is a review, more is a filibuster — after that the
+        // deterministic geometry audit alone decides
+        if (reviews < 3) {
+          lastReview = await independentReview(pair, survey, io, looks).catch(e => {
+            console.warn('reviewer unavailable this round', e);
+            return null;
+          });
+          reviews += lastReview ? 1 : 0;
+        }
         const reviewText = lastReview
           ? `Independent reviewer: ${lastReview.verdict}. ` + (lastReview.findings || []).map(x => `[${x.severity}] ${x.where}: ${x.issue}${x.fix ? ' → ' + x.fix : ''}`).join('; ')
           : 'Independent reviewer unavailable this round.';
@@ -216,7 +220,7 @@ export async function buildWithProtocol(rawTargetURL, io) {
           && !(lastReview.findings || []).some(x => x.severity !== 'minor');
         if (looks < 1) reply('Refused: nothing has been looked at yet.');
         else if (!geo.ok) reply('Refused — the geometry audit still holds blockers or majors. ' + geo.summary);
-        else if (!reviewClean && reviews > 0 && turn < 14) reply('Refused — the independent reviewer has not passed the model yet. Fix the graded findings and look again.');
+        else if (!reviewClean && reviews > 0 && reviews < 3 && turn < 8) reply('Refused — the independent reviewer has not passed the model yet. Fix the graded findings and look again.');
         else { finished = args || {}; reply('Converged.'); }
       } else {
         reply('Unknown tool.');

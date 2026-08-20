@@ -1234,6 +1234,11 @@ function buildSiteContext() {
       new THREE.LineBasicMaterial({ color: 0xd9b45f, transparent: true, opacity: 0.55 }));
     scene.add(sunPathLine);
     updateSunPath();
+    // The disc is born at the origin — the middle of the model — and only
+    // positionSun() moves it into the sky. That call ran before this disc
+    // existed, so without this line it sat glowing inside the building until
+    // the first drag of the sun slider.
+    positionSun();
   }
 }
 

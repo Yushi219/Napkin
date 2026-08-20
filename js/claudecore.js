@@ -13,6 +13,8 @@ export function claudeConfig() {
   return {
     key: clean(localStorage.getItem('napkin_claude_key') || window.NAPKIN_CONFIG?.anthropicKey || ''),
     model: clean(localStorage.getItem('napkin_claude_model') || window.NAPKIN_CONFIG?.anthropicModel || 'claude-opus-5'),
+    // grading a pair image is a quick judgement, not deep spatial construction
+    reviewerModel: clean(localStorage.getItem('napkin_claude_reviewer_model') || window.NAPKIN_CONFIG?.anthropicReviewerModel || 'claude-sonnet-5'),
   };
 }
 export function hasClaude() { return !!claudeConfig().key; }
@@ -57,13 +59,13 @@ export function hasAnyAI() { return hasClaude() || hasGPT(); }
 // One forced tool call: Claude MUST answer through the named tool, so the
 // input comes back already shaped by the schema — the audit checklist and
 // the reviewer report both ride this.
-export async function claudeToolCall({ system, content, tool, maxTokens = 6000 }, tag) {
+export async function claudeToolCall({ system, content, tool, maxTokens = 6000, model: modelOverride }, tag) {
   const { key, model } = claudeConfig();
   if (!key) throw new Error(tag + ': no Anthropic key');
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST', headers: HEADERS(key),
     body: JSON.stringify({
-      model, max_tokens: maxTokens, system,
+      model: modelOverride || model, max_tokens: maxTokens, system,
       tools: [tool],
       tool_choice: { type: 'tool', name: tool.name },
       messages: [{ role: 'user', content }],

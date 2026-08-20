@@ -461,10 +461,16 @@ body.annotating #mid-col { outline: 2px solid #c0392b55; outline-offset: -2px; }
 .env-option small { display: block; margin-top: 3px; color: var(--muted); font: 9.5px/1.35 var(--font-ui); white-space: normal; }
 .env-check { color: var(--accent); opacity: 0; font-size: 13px; }
 .env-option.selected .env-check { opacity: 1; }
+/* Mostly window, barely curtain: the point of the veil is to say "working",
+   not to hide the model assembling itself behind it. */
 #render-veil {
-  position: absolute; inset: 0; background: #f6f2e8d8; backdrop-filter: blur(3px);
+  position: absolute; inset: 0; background: #f6f2e84d;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-  color: var(--ink-soft); font-size: 12px; z-index: 5;
+  color: var(--ink); font-size: 12px; z-index: 5;
+}
+#veil-label {
+  background: #fffdf8e6; border: 1px solid var(--line); border-radius: 14px;
+  padding: 6px 14px; box-shadow: 0 4px 16px #00000014;
 }
 .veil-spin {
   width: 26px; height: 26px; border-radius: 50%;
