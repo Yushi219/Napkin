@@ -410,10 +410,51 @@ export function snapMasses(masses) {
   return masses;
 }
 
+// ---------------- talking to the vision endpoint ----------------
+
+// The API explains every 400 in its response body; throwing the bare status
+// hid the one sentence that says what is wrong.
+async function apiError(res, what) {
+  let detail = '';
+  try {
+    const body = await res.json();
+    detail = body?.error?.message || body?.message || '';
+  } catch { /* not JSON */ }
+  return new Error(`${what} ${res.status}${detail ? ': ' + detail : ''}`);
+}
+
+// Claude resizes anything over 1568px on its long edge anyway, and refuses a
+// payload over 5 MB. A picture straight from the render model can be either,
+// so it is fitted and re-encoded once, which also pins the media type to
+// something the endpoint definitely accepts.
+const MAX_EDGE = 1400;
+function claudeImage(dataURL) {
+  return new Promise(resolve => {
+    const done = (media, data) => resolve({ type: 'image', source: { type: 'base64', media_type: media, data } });
+    const im = new Image();
+    im.onload = () => {
+      const scale = Math.min(1, MAX_EDGE / Math.max(im.width, im.height));
+      const w = Math.max(1, Math.round(im.width * scale));
+      const h = Math.max(1, Math.round(im.height * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const c = cv.getContext('2d');
+      c.fillStyle = '#ffffff';           // JPEG has no alpha; keep ink on white
+      c.fillRect(0, 0, w, h);
+      c.drawImage(im, 0, 0, w, h);
+      done('image/jpeg', cv.toDataURL('image/jpeg', 0.92).split(',')[1]);
+    };
+    im.onerror = () => {
+      const semi = dataURL.indexOf(';'), comma = dataURL.indexOf(',');
+      done(semi > 5 ? dataURL.slice(5, semi) : 'image/png', dataURL.slice(comma + 1));
+    };
+    im.src = dataURL;
+  });
+}
+
 export async function visionMasses(dataURL, cfg) {
   if (!cfg.anthropicKey) return null;
-  const b64 = dataURL.split(',')[1];
-  const media = dataURL.slice(5, dataURL.indexOf(';'));
+  const picture = await claudeImage(dataURL);
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -427,7 +468,7 @@ export async function visionMasses(dataURL, cfg) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
+          picture,
           { type: 'text', text: `You are an architect reading a massing sketch. The image (perspective, axon, elevation or plan) shows a composition of simple volumes. Rebuild it as boxes so faithfully that a render from the same viewpoint would match the drawing.
 
 Work in four stages. Stages 1-3 are short plain prose — never type { or } anywhere before the final JSON.
@@ -457,7 +498,7 @@ Max 10 boxes. h = storeys × 3.6 wherever storeys were counted. camera = the ske
       }],
     }),
   });
-  if (!res.ok) throw new Error('vision ' + res.status);
+  if (!res.ok) throw await apiError(res, 'vision');
   const data = await res.json();
   const text = (data.content || []).map(b => b.text || '').join('');
   const parsed = parseJsonLoose(text, data.stop_reason);
@@ -475,7 +516,9 @@ Max 10 boxes. h = storeys × 3.6 wherever storeys were counted. camera = the ske
 // fidelity lever — spatial alignment improves monotonically over passes.
 export async function visionRefine(sketchDataURL, renderDataURL, masses, camera, cfg) {
   if (!cfg.anthropicKey) return null;
-  const img = d => ({ type: 'image', source: { type: 'base64', media_type: d.slice(5, d.indexOf(';')), data: d.split(',')[1] } });
+  // both pictures are fitted before the body is built — claudeImage decodes
+  // through an <img>, so it has to be awaited, not dropped into the array
+  const [imgA, imgB] = await Promise.all([claudeImage(sketchDataURL), claudeImage(renderDataURL)]);
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -489,8 +532,8 @@ export async function visionRefine(sketchDataURL, renderDataURL, masses, camera,
       messages: [{
         role: 'user',
         content: [
-          img(sketchDataURL),
-          img(renderDataURL),
+          imgA,
+          imgB,
           { type: 'text', text: `The FIRST image (A) is the designer's sketch. The SECOND image (B) is a render of the current box-massing reconstruction, taken from the estimated same viewpoint. Your job: make B match A.
 
 Current reconstruction (metres; frame: y up, ground y=0, front facade faces +z, x = right in the sketch, z = toward viewer; a box occupies x±w/2, z±d/2, y to y+h):
@@ -516,7 +559,7 @@ Output ONLY this JSON, nothing after it:
       }],
     }),
   });
-  if (!res.ok) throw new Error('refine ' + res.status);
+  if (!res.ok) throw await apiError(res, 'refine');
   const data = await res.json();
   const text = (data.content || []).map(b => b.text || '').join('');
   const parsed = parseJsonLoose(text, data.stop_reason);
@@ -532,8 +575,7 @@ Output ONLY this JSON, nothing after it:
 // The 3D-native version of commenting on a design.
 export async function visionAnnotatedEdit(annotatedDataURL, comment, masses, cfg) {
   if (!cfg.anthropicKey) return null;
-  const b64 = annotatedDataURL.split(',')[1];
-  const media = annotatedDataURL.slice(5, annotatedDataURL.indexOf(';'));
+  const picture = await claudeImage(annotatedDataURL);
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -547,7 +589,7 @@ export async function visionAnnotatedEdit(annotatedDataURL, comment, masses, cfg
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
+          picture,
           { type: 'text', text: `This is the current 3D massing model. The RED PEN marks are the designer's annotation, and their note says: "${comment}".
 
 Current masses (metres, y = base elevation):
@@ -561,7 +603,7 @@ Answer ONLY JSON:
       }],
     }),
   });
-  if (!res.ok) throw new Error('vision edit ' + res.status);
+  if (!res.ok) throw await apiError(res, 'vision edit');
   const data = await res.json();
   const text = (data.content || []).map(b => b.text || '').join('');
   const parsed = parseJsonLoose(text, data.stop_reason);
@@ -573,8 +615,7 @@ Answer ONLY JSON:
 // Claude vision: full massing decomposition of a rendering — the smart reverse path.
 export async function visionParams(dataURL, cfg) {
   if (!cfg.anthropicKey) return null;
-  const b64 = dataURL.split(',')[1];
-  const media = dataURL.slice(5, dataURL.indexOf(';'));
+  const picture = await claudeImage(dataURL);
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -588,7 +629,7 @@ export async function visionParams(dataURL, cfg) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
+          picture,
           { type: 'text', text: `Decompose the main building in this image into massing parameters. Answer ONLY JSON:
 {"floors": int (estimate from windows/storeys, 3-70),
  "taper": number 0.4-1.15 (top width / base width, 1 if straight),
@@ -602,7 +643,7 @@ export async function visionParams(dataURL, cfg) {
       }],
     }),
   });
-  if (!res.ok) throw new Error('vision ' + res.status);
+  if (!res.ok) throw await apiError(res, 'vision');
   const data = await res.json();
   const text = (data.content || []).map(b => b.text || '').join('');
   return parseJsonLoose(text, data.stop_reason);
@@ -612,8 +653,7 @@ export async function visionParams(dataURL, cfg) {
 
 export async function claudeAdvise(photoDataURL, cfg) {
   if (!cfg.anthropicKey || !photoDataURL) return null;
-  const b64 = photoDataURL.split(',')[1];
-  const media = photoDataURL.slice(5, photoDataURL.indexOf(';'));
+  const picture = await claudeImage(photoDataURL);
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -627,13 +667,13 @@ export async function claudeAdvise(photoDataURL, cfg) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
+          picture,
           { type: 'text', text: 'This is a napkin sketch of a building. Answer ONLY JSON: {"view":"plan|elevation","floors":int|null,"notes":"<12 words"}. floors only if the sketch clearly indicates storey count (drawn lines or a written number).' },
         ],
       }],
     }),
   });
-  if (!res.ok) throw new Error('vision ' + res.status);
+  if (!res.ok) throw await apiError(res, 'vision');
   const data = await res.json();
   const text = (data.content || []).map(b => b.text || '').join('');
   return parseJsonLoose(text, data.stop_reason);

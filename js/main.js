@@ -242,7 +242,7 @@ function readFailure(e) {
   if (/401|authentication|invalid x-api-key/i.test(raw)) return 'the API key was rejected (401)';
   if (/429|quota|rate/i.test(raw)) return 'the account is out of quota (429)';
   if (/Failed to fetch|NetworkError/i.test(raw)) return 'the request could not leave the browser — check the connection';
-  return raw.slice(0, 90);
+  return raw.slice(0, 200);   // the API's own sentence is the useful part
 }
 
 async function build() {
