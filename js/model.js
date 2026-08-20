@@ -251,7 +251,7 @@ function woodTexture(scale = 1) {
 }
 
 let woodTex = null;
-export const MODEL_MODES = ['white', 'wood'];
+export const MODEL_MODES = ['sketch', 'white', 'wood'];
 let modelMode = 'white';
 
 const MAT = {
@@ -336,6 +336,167 @@ function speciesTexture(scaleKey, scale) {
   return t;
 }
 
+
+// ================= Sketch world =================
+// The third way of seeing the model: not a photograph and not a material
+// study, but the drawing itself lifted into space — pencil edges, a haze of
+// graphite dots where the surfaces are, a wobbly ground line. The kind of
+// picture a designer shows when the idea matters more than the cladding.
+let sketchGroup = null, sketchAtmos = null;
+
+export function isSketchWorld() { return modelMode === 'sketch'; }
+
+function disposeSketchWorld() {
+  if (!sketchGroup) return;
+  scene.remove(sketchGroup);
+  sketchGroup.traverse(o => { o.geometry?.dispose(); if (o.material?.dispose) o.material.dispose(); });
+  sketchGroup = null;
+}
+
+function syncSketchWorld() {
+  if (!scene) return;
+  const on = modelMode === 'sketch';
+  if (towerGroup) towerGroup.visible = !on;
+  if (contextGroup) contextGroup.visible = !on && contextOn;
+  if (skyMesh) skyMesh.visible = !on;
+  if (sunDisc) sunDisc.visible = !on && contextOn;
+  if (sunPathLine) sunPathLine.visible = !on && contextOn;
+  if (!on) {
+    disposeSketchWorld();
+    if (sketchAtmos) { scene.background = sketchAtmos.bg; scene.fog = sketchAtmos.fog; sketchAtmos = null; }
+    return;
+  }
+  if (!sketchAtmos) sketchAtmos = { bg: scene.background, fog: scene.fog };
+  scene.background = new THREE.Color(0xf7f3ea);
+  scene.fog = null;
+  buildSketchOverlay();
+}
+
+// deterministic wobble — a redraw must not shimmer
+function swob(seed) {
+  const x = Math.sin(seed * 91.7 + 40.9) * 23421.63;
+  return (x - Math.floor(x)) - 0.5;
+}
+
+function buildSketchOverlay() {
+  disposeSketchWorld();
+  sketchGroup = new THREE.Group();
+
+  const ink = new THREE.LineBasicMaterial({ color: 0x2e2f36, transparent: true, opacity: 0.9 });
+  const inkGhost = new THREE.LineBasicMaterial({ color: 0x2e2f36, transparent: true, opacity: 0.2 });
+  const ctxInk = new THREE.LineBasicMaterial({ color: 0x9a9183, transparent: true, opacity: 0.45 });
+
+  const harvest = (root, mat, ghost, dotBudget, dotMat) => {
+    if (!root) return;
+    root.updateWorldMatrix(true, true);
+    const meshes = [];
+    root.traverse(o => { if (o.isMesh && o.geometry) meshes.push(o); });
+    // spread the dot budget over the meshes by rough size
+    let dotsLeft = dotBudget;
+    for (const mesh of meshes) {
+      const g = mesh.geometry;
+      if (!g.boundingSphere) g.computeBoundingSphere();
+      if (g.boundingSphere.radius > 500) continue;          // sky, the big ground plane
+      const worlds = [];
+      if (mesh.isInstancedMesh) {
+        if (mesh.count > 140) continue;                      // a whole facade of slats — the edges would be soup
+        const im = new THREE.Matrix4();
+        for (let i = 0; i < mesh.count; i++) {
+          mesh.getMatrixAt(i, im);
+          worlds.push(new THREE.Matrix4().multiplyMatrices(mesh.matrixWorld, im));
+        }
+      } else worlds.push(mesh.matrixWorld.clone());
+
+      const eg = new THREE.EdgesGeometry(g, 26);
+      for (const w of worlds) {
+        const l = new THREE.LineSegments(eg, mat);
+        l.applyMatrix4(w);
+        sketchGroup.add(l);
+        if (ghost) {
+          // the pencil goes over a line twice, never exactly on top of itself
+          const l2 = new THREE.LineSegments(eg, ghost);
+          l2.applyMatrix4(w);
+          l2.position.x += 0.09; l2.position.y += 0.12;
+          sketchGroup.add(l2);
+        }
+      }
+      if (dotMat && dotsLeft > 0 && !mesh.isInstancedMesh) {
+        const n = Math.min(dotsLeft, Math.max(60, Math.round(g.boundingSphere.radius * 26)));
+        const pts = stippleGeometry(g, mesh.matrixWorld, n);
+        if (pts) { sketchGroup.add(new THREE.Points(pts, dotMat)); dotsLeft -= n; }
+      }
+    }
+  };
+
+  const buildingDots = new THREE.PointsMaterial({ color: 0x3a3b42, size: 0.55, transparent: true, opacity: 0.4, sizeAttenuation: true });
+  const contextDots = new THREE.PointsMaterial({ color: 0x9a9183, size: 0.5, transparent: true, opacity: 0.22, sizeAttenuation: true });
+
+  harvest(towerGroup, ink, inkGhost, 2600, buildingDots);
+  if (contextOn) harvest(contextGroup, ctxInk, null, 1600, contextDots);
+
+  // the ground: two overlapping freehand loops where the plot sits
+  if (towerGroup) {
+    const box = new THREE.Box3().setFromObject(towerGroup);
+    const size = box.getSize(new THREE.Vector3());
+    const r0 = Math.max(size.x, size.z) * 0.85 + 6;
+    for (let pass = 0; pass < 2; pass++) {
+      const pts = [];
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        const r = r0 * (1 + 0.035 * Math.sin(a * 3 + pass * 1.7) + swob(i + pass * 97) * 0.03);
+        pts.push(new THREE.Vector3(Math.cos(a) * r, 0.25, Math.sin(a) * r));
+      }
+      const loop = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(pts),
+        pass ? inkGhost : new THREE.LineBasicMaterial({ color: 0x2e2f36, transparent: true, opacity: 0.5 }));
+      sketchGroup.add(loop);
+    }
+  }
+  scene.add(sketchGroup);
+}
+
+// Area-weighted points on the surface of a geometry — the graphite haze that
+// stands in for shading. Deterministic, so the haze holds still between frames.
+function stippleGeometry(geom, matrixWorld, count) {
+  const pos = geom.attributes.position;
+  if (!pos) return null;
+  const idx = geom.index;
+  const tris = idx ? idx.count / 3 : pos.count / 3;
+  if (tris < 1) return null;
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
+  const read = (tri, corner, v) => {
+    const i = idx ? idx.getX(tri * 3 + corner) : tri * 3 + corner;
+    v.fromBufferAttribute(pos, i);
+  };
+  // cumulative areas
+  const cum = new Float64Array(tris);
+  let total = 0;
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3();
+  for (let t = 0; t < tris; t++) {
+    read(t, 0, A); read(t, 1, B); read(t, 2, C);
+    ab.subVectors(B, A); ac.subVectors(C, A);
+    total += ab.cross(ac).length() / 2;
+    cum[t] = total;
+  }
+  if (!total) return null;
+  const out = new Float32Array(count * 3);
+  const P = new THREE.Vector3();
+  for (let n = 0; n < count; n++) {
+    const pick = (swob(n * 3.1) + 0.5) * total;
+    let lo = 0, hi = tris - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; cum[mid] < pick ? lo = mid + 1 : hi = mid; }
+    read(lo, 0, A); read(lo, 1, B); read(lo, 2, C);
+    let u = swob(n * 7.3 + 11) + 0.5, v = swob(n * 13.7 + 5) + 0.5;
+    if (u + v > 1) { u = 1 - u; v = 1 - v; }
+    P.copy(A).addScaledVector(ab.subVectors(B, A), u).addScaledVector(ac.subVectors(C, A), v);
+    P.applyMatrix4(matrixWorld);
+    out[n * 3] = P.x; out[n * 3 + 1] = P.y; out[n * 3 + 2] = P.z;
+  }
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  return bg;
+}
+
 // In wood mode the WHOLE SCENE is the model shop: building, context blocks,
 // ground, trees — everything cut from the same stock, like a real basswood site model.
 export function isWoodWorld() { return modelMode === 'wood'; }
@@ -372,6 +533,7 @@ export function setModelMode(mode) {
   }
   for (const m of [MAT.clay, MAT.band, MAT.fin, MAT.glass]) m.needsUpdate = true;
   if (scene && contextGroup) rebuildContext();
+  syncSketchWorld();
 }
 export function getModelMode() { return modelMode; }
 
@@ -685,6 +847,7 @@ function rebuildContext() {
   }
   buildSiteContext();
   contextGroup.visible = contextOn;
+  syncSketchWorld();
 }
 
 const GROUND_COL = { paved: 0xdcd6c4, lawn: 0x8fa878, meadow: 0xa8ac7a, gravel: 0xcfc7b4 };
@@ -1085,7 +1248,7 @@ export function setSunTime({ date, hour, site }) {
   positionSun();
 }
 export function getSunTime() { return { date: sunDate, hour: sunHour, site: getSite(), window: daylightWindow(sunDate) }; }
-export function toggleContext(on) { contextOn = on; if (contextGroup) contextGroup.visible = on; if (sunPathLine) sunPathLine.visible = on; if (sunDisc) sunDisc.visible = on; }
+export function toggleContext(on) { contextOn = on; if (contextGroup) contextGroup.visible = on; if (sunPathLine) sunPathLine.visible = on; if (sunDisc) sunDisc.visible = on; syncSketchWorld(); }
 
 
 
@@ -1612,6 +1775,11 @@ function rebuildWireMasses() {
 }
 
 export function rebuild() {
+  rebuildSolid();
+  syncSketchWorld();
+}
+
+function rebuildSolid() {
   clearImported();   // parametric edits always return you to the editable twin
   if (towerGroup) {
     scene.remove(towerGroup);

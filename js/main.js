@@ -128,8 +128,18 @@ function refreshGallery() {
 function openProject(item, isUser) {
   leaveImported();
   clearSelection();
+  // a reopened project keeps its identity, so further work updates it in place
+  currentProjectId = isUser ? item.id : null;
   // the sketch is regenerated from the massing so napkin and model always agree
   sketch.restoreStrokes({ front: item.strokes || strokesFor(item.masses), side: [], plan: [] });
+  sketch.restorePhoto(item.photo || null);
+  // the concept pass and the last render come back to their panes
+  conceptURL = item.concept || null;
+  $('concept-img').src = conceptURL || '';
+  $('concept-pane').classList.toggle('hidden', !conceptURL);
+  lastRenderURL = item.render || null;
+  if (lastRenderURL) $('render-img').src = lastRenderURL;
+  if (item.customType) { customTypeText = item.customType; }
   const patch = item.archetype === 'tower'
     ? Object.assign({}, structuredClone(item.params), {
         archetype: 'tower', masses: null, reading: item.reading || item.name,
@@ -159,12 +169,44 @@ function openProject(item, isUser) {
   if (deviceKind() === 'phone') showPane('model');
 }
 
-function saveToGallery() {
+// A project is the whole desk, not just the boxes: the photo on the napkin,
+// the concept pass, the last render, the words. Reopening it must feel like
+// nothing was ever put away.
+let currentProjectId = null;
+
+// localStorage holds ~5 MB for the whole app, so every picture is shrunk
+// before it is stored — a gallery record is a keepsake, not an archive.
+function shrinkDataURL(url, maxEdge = 640, q = 0.72) {
+  return new Promise(resolve => {
+    if (!url) return resolve(null);
+    const img = new Image();
+    img.onload = () => {
+      const f = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.width * f));
+      cv.height = Math.max(1, Math.round(img.height * f));
+      const c = cv.getContext('2d');
+      c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
+      c.drawImage(img, 0, 0, cv.width, cv.height);
+      resolve(cv.toDataURL('image/jpeg', q));
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+async function saveToGallery() {
   if (!model.state.masses?.length) return;
   const name = (model.state.reading || 'Untitled')
     .split(/[,—.]/)[0].trim().replace(/^a /i, '').slice(0, 26) || 'Untitled';
+  currentProjectId = currentProjectId || 'u' + Date.now();
+  const [photo, concept, render] = await Promise.all([
+    shrinkDataURL(sketch.photoDataURL(900)),
+    shrinkDataURL(conceptURL),
+    shrinkDataURL(lastRenderURL, 900, 0.78),
+  ]);
   saveProject({
-    id: 'u' + Date.now(),
+    id: currentProjectId,
     name: name.charAt(0).toUpperCase() + name.slice(1),
     type: model.state.type,
     reading: model.state.reading,
@@ -173,6 +215,8 @@ function saveToGallery() {
     thumb: sketch.thumbnail(),
     sig: authorName,
     camera: lastCamera,
+    photo, concept, render,
+    customType: customTypeText || null,
   });
   refreshGallery();
 }
@@ -852,8 +896,8 @@ function wire() {
       $('concept-pane').classList.add('hidden');
       nap.classList.remove('crumpling');
       nap.classList.add('arriving');
-      setTimeout(() => { nap.classList.remove('arriving'); binning = false; }, 540);
-    }, 820);
+      setTimeout(() => { nap.classList.remove('arriving'); binning = false; }, 600);
+    }, 1400);
   });
 
   $('photo-input').addEventListener('change', async e => {
@@ -989,6 +1033,7 @@ function wire() {
     setTimeout(() => dispatchEvent(new Event('resize')), 60);
   });
 
+  $('btn-home').addEventListener('click', () => { currentProjectId = null; }, { capture: true });
   $('btn-home').addEventListener('click', () => {
     document.body.classList.remove('workspace');
     document.body.classList.add('landing');

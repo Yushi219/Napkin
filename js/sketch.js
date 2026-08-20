@@ -133,6 +133,16 @@ export async function loadPhoto(file) {
   fireChange();
 }
 
+// a saved project hands its photo back as a data URL
+export async function restorePhoto(dataURL) {
+  if (!dataURL) { photo = null; views[currentView].photo = null; paint(); return; }
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataURL; });
+  photo = img;
+  views[currentView].photo = img;
+  paint();
+}
+
 function fireChange() {
   clearTimeout(changeTimer);
   changeTimer = setTimeout(() => changeCb?.(), 650);

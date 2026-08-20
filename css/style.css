@@ -1333,24 +1333,49 @@ body.fs #viewport > #cam-pane #cam-hint { border-color: #ffffff1f; color: #b9b3a
 /* Screwing up a bad sketch and lobbing it is the gesture the button stands
    for, so the button performs it: crumple, throw on an arc, and a clean one
    floats up. Motion is skipped for anyone who asked for less of it. */
-#napkin { transform-origin: 50% 60%; }
+#napkin { transform-origin: 50% 58%; }
+/* A sheet does not shrink into a disc — it collapses in fits, corners first.
+   The silhouette is a ten-point polygon that caves in step by step, with a
+   pause mid-way as the hand regrips, and the tone flattens as the folds
+   swallow the drawing. */
 #napkin.crumpling {
-  animation: crumple .34s cubic-bezier(.5,-0.2,.7,.6) forwards,
-             lob .52s .3s cubic-bezier(.35,.02,.7,.5) forwards;
+  animation: crumple .82s cubic-bezier(.42,.02,.58,1) forwards,
+             lob .6s .78s cubic-bezier(.32,.04,.72,.42) forwards;
 }
-#napkin.arriving { animation: freshNapkin .52s cubic-bezier(.2,.8,.3,1) both; }
+#napkin.arriving { animation: freshNapkin .58s cubic-bezier(.2,.8,.3,1) both; }
 
 @keyframes crumple {
-  0%   { border-radius: 3px; filter: none; }
-  55%  { border-radius: 34% 46% 30% 50% / 44% 32% 52% 38%; transform: scale(.62) rotate(-9deg); filter: contrast(1.15) saturate(.85); }
-  100% { border-radius: 46% 38% 52% 34% / 36% 50% 34% 48%; transform: scale(.3) rotate(7deg); filter: contrast(1.25) saturate(.7); }
+  0% {
+    clip-path: polygon(0% 0%, 34% 0%, 66% 0%, 100% 0%, 100% 38%, 100% 100%, 62% 100%, 30% 100%, 0% 100%, 0% 45%);
+    transform: none; filter: none;
+  }
+  28% {  /* the first fold — one corner gives */
+    clip-path: polygon(8% 6%, 36% 2%, 63% 5%, 90% 12%, 96% 40%, 93% 88%, 60% 97%, 32% 93%, 6% 90%, 2% 46%);
+    transform: scale(.9) rotate(-3deg); filter: contrast(1.04);
+  }
+  46% {  /* regrip: it hangs for a beat, half-scrunched */
+    clip-path: polygon(14% 12%, 38% 6%, 60% 10%, 82% 18%, 90% 42%, 84% 78%, 58% 90%, 34% 84%, 12% 78%, 8% 46%);
+    transform: scale(.74) rotate(4deg); filter: contrast(1.08) saturate(.92);
+  }
+  58% {
+    clip-path: polygon(16% 14%, 40% 8%, 58% 12%, 80% 20%, 87% 43%, 82% 75%, 56% 87%, 35% 82%, 14% 75%, 11% 45%);
+    transform: scale(.7) rotate(2deg); filter: contrast(1.1) saturate(.9);
+  }
+  78% {  /* the squeeze */
+    clip-path: polygon(22% 20%, 42% 13%, 58% 17%, 74% 26%, 80% 44%, 74% 66%, 55% 78%, 38% 73%, 21% 65%, 17% 44%);
+    transform: scale(.48) rotate(-6deg); filter: contrast(1.18) saturate(.8) brightness(.97);
+  }
+  100% {  /* a tight, lopsided wad */
+    clip-path: polygon(26% 24%, 43% 17%, 57% 20%, 71% 29%, 76% 44%, 71% 62%, 55% 72%, 40% 68%, 25% 61%, 21% 43%);
+    transform: scale(.34) rotate(9deg); filter: contrast(1.26) saturate(.68) brightness(.95);
+  }
 }
-/* the arc: rises, then falls away to the right while it spins */
+/* the arc: up and away to the right, tumbling, gone before it lands */
 @keyframes lob {
-  0%   { transform: translate(0, 0) scale(.3) rotate(7deg); opacity: 1; }
-  35%  { transform: translate(26vw, -34vh) scale(.22) rotate(160deg); opacity: 1; }
-  70%  { transform: translate(48vw, -6vh) scale(.16) rotate(330deg); opacity: .85; }
-  100% { transform: translate(64vw, 46vh) scale(.1) rotate(520deg); opacity: 0; }
+  0%   { transform: translate(0, 0) scale(.34) rotate(9deg); opacity: 1; }
+  38%  { transform: translate(24vw, -30vh) scale(.26) rotate(150deg); opacity: 1; }
+  72%  { transform: translate(46vw, -4vh) scale(.18) rotate(320deg); opacity: .8; }
+  100% { transform: translate(62vw, 44vh) scale(.12) rotate(500deg); opacity: 0; }
 }
 @keyframes freshNapkin {
   0%   { transform: translateY(46%) scale(.86) rotate(-2.5deg); opacity: 0; }
