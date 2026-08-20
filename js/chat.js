@@ -3,7 +3,8 @@
 import { state } from './model.js';
 import { TYPES } from './metrics.js';
 import { sanitizeMasses } from './interpret.js';
-import { gptVisionCompat, hasGPT } from './gptcore.js';
+import { aiVisionCompat as gptVisionCompat } from './claudecore.js';
+import { hasGPT } from './gptcore.js';
 
 // A key copied on a phone often arrives carrying something invisible — a
 // zero-width space, a non-breaking space, a trailing newline. fetch refuses
@@ -12,9 +13,9 @@ import { gptVisionCompat, hasGPT } from './gptcore.js';
 // reduced to printable ASCII at the one place it is read.
 export const cleanKey = v => String(v ?? '').replace(/[^!-~]/g, '');
 
-// One engine for everything spoken: ChatGPT. hasAI answers whether any
-// AI edit path is live on this device.
-export function hasAI() { return hasGPT(); }
+// Claude speaks first; ChatGPT still answers when only that key exists.
+import { hasAnyAI } from './claudecore.js';
+export function hasAI() { return hasAnyAI(); }
 
 const EDIT_SCHEMA = {
   floors: 'int 2..70', floorHeight: 'number 2.8..5.5 (metres)', baseWidth: 'number 14..60',

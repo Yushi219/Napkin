@@ -311,7 +311,11 @@ export function settingsModal(onSave) {
   openModal(`
     <div class="modal-kicker">Settings</div>
     <div class="modal-title" style="font-size:20px">Engines & platforms</div>
-    <div class="settings-row"><label>OpenAI API key — reads the drawing, builds and edits the model</label>
+    <div class="settings-row"><label>Anthropic API key — the survey-and-audit reconstruction protocol</label>
+      <input id="set-claude" type="password" placeholder="sk-ant-…" value="${esc(g('napkin_claude_key') || (window.NAPKIN_CONFIG?.anthropicKey ?? ''))}" /></div>
+    <div class="settings-row"><label>Claude model</label>
+      <input id="set-claude-model" placeholder="claude-opus-5" value="${esc(g('napkin_claude_model'))}" /></div>
+    <div class="settings-row"><label>OpenAI API key — fallback engine when no Anthropic key</label>
       <input id="set-openai" type="password" placeholder="sk-proj-…" value="${esc(g('napkin_openai_key') || (window.NAPKIN_CONFIG?.openaiKey ?? ''))}" /></div>
     <div class="settings-row"><label>OpenAI model for the builder</label>
       <input id="set-openai-model" placeholder="gpt-5.6-terra" value="${esc(g('napkin_openai_model') || (window.NAPKIN_CONFIG?.openaiModel ?? ''))}" />
@@ -337,6 +341,8 @@ export function settingsModal(onSave) {
     };
     localStorage.setItem('napkin_gemini_key', take('set-gemini'));
     localStorage.setItem('napkin_openai_key', take('set-openai'));
+    localStorage.setItem('napkin_claude_key', take('set-claude'));
+    localStorage.setItem('napkin_claude_model', clean(document.getElementById('set-claude-model').value));
     localStorage.setItem('napkin_openai_model', clean(document.getElementById('set-openai-model').value));
     localStorage.setItem('napkin_openai_reasoning', clean(document.getElementById('set-openai-reasoning').value));
     for (const s of SPONSORS) localStorage.setItem(s.field, clean(document.getElementById(`set-${s.id}`).value));

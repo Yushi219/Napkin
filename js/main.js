@@ -12,6 +12,8 @@ import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './
 import { initSplitters } from './splitters.js';
 import { interpretCommand, hasAI } from './chat.js';
 import { gptBuildMasses, hasGPT } from './openai.js';
+import { buildWithProtocol } from './builder.js';
+import { hasClaude } from './claudecore.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
 
@@ -356,7 +358,7 @@ async function buildPasses() {
       }
     }
 
-    const busy = ui.addChatMsg('ai', 'Pass 2 — ChatGPT is auditing, building, looking and correcting…', 'busy');
+    const busy = ui.addChatMsg('ai', 'Pass 2 — surveying, building level by level, auditing until convergence…', 'busy');
     ui.veil(true, 'pass 2 — building: place, look, correct…');
     let agentRan = false;
     try {
@@ -378,17 +380,25 @@ async function buildPasses() {
         snapshot: () => model.modelSnapshot(1100, { isolate: true }),
         step: label => { ui.veil(true, label); busy.textContent = label; },
         audit: a => {
-          const label = `${a.visibleStoreys} levels · ${a.elements.length} essential elements · ${a.projection}`;
-          ui.addChatMsg('ai', `Reference locked — ${label}.`, 'prompt');
+          const n = (a.elements || a.features || []).length;
+          const hyp = (a.hypotheses || []).length;
+          ui.addChatMsg('ai', `Survey locked — ${a.visibleStoreys} levels · ${n} features` + (hyp ? ` · ${hyp} recorded hypotheses` : '') + ` · ${a.projection}.`, 'prompt');
         },
       };
       // the loop compares against the napkin itself; the concept render, when
       // pass 1 produced one, goes along only as a reading aid
       io.aidURL = readShot !== lastSketchShot ? readShot : null;
       let v = null, engineUsed = '';
-      try {
-        v = await gptBuildMasses(lastReferenceShot || lastSketchShot, io); engineUsed = 'ChatGPT'; agentRan = true;
-      } catch (agentErr) { console.warn('ChatGPT builder failed', agentErr); }
+      if (hasClaude()) {
+        try {
+          v = await buildWithProtocol(lastSketchShot, io); engineUsed = 'the Claude protocol'; agentRan = true;
+        } catch (agentErr) { console.warn('Claude protocol failed', agentErr); }
+      }
+      if (!v && hasGPT()) {
+        try {
+          v = await gptBuildMasses(lastReferenceShot || lastSketchShot, io); engineUsed = 'ChatGPT'; agentRan = true;
+        } catch (agentErr) { console.warn('ChatGPT builder failed', agentErr); }
+      }
       if (!v && hasAI()) {
         ui.veil(true, 'pass 2 — reading volumes and storeys…');
         v = await visionMasses(readShot, anthropicCfg());
@@ -1378,9 +1388,11 @@ function wire() {
     if (!built) { ui.toast('Build first — then take it to Rhino.'); return; }
     ui.toast('Writing .3dm…');
     const kind = await model.exportRhino(JSON.stringify(model.snapshotState(), null, 2), metricsBrief(compute(customTypeText)));
-    ui.toast(kind === '3dm'
+    const caged = model.exportCageObj();
+    ui.toast((kind === '3dm'
       ? 'napkin-building.3dm downloaded — drag it into Rhino. Parameters ride along in document user text.'
-      : 'Rhino engine unavailable here — exported .obj instead (Rhino opens it fine).', 4600);
+      : 'Rhino engine unavailable here — exported .obj instead (Rhino opens it fine).')
+      + (caged ? ' Plus napkin-cage.obj: quad control cages — select and ToSubD in Rhino to sculpt.' : ''), 5200);
   });
 
   $('btn-spin').addEventListener('click', () => {

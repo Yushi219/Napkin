@@ -1,4 +1,5 @@
-import { gptVisionCompat, hasGPT } from './gptcore.js';
+import { aiVisionCompat as gptVisionCompat } from './claudecore.js';
+import { hasGPT } from './gptcore.js';
 // Nano Banana Pro (Gemini image) — img2img, following the proven promptitect
 // call pattern: x-goog-api-key header, role-labelled image parts (INPUT IMAGE
 // preserves geometry/camera; references are style-only), responseModalities

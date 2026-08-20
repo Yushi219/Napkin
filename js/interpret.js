@@ -5,7 +5,8 @@
 // photos go through the exact same pipeline. Claude vision (optional, key needed)
 // is only an adviser for uploaded photos — never a dependency.
 
-import { gptVisionCompat, hasGPT } from './gptcore.js';
+import { aiVisionCompat as gptVisionCompat } from './claudecore.js';
+import { hasGPT } from './gptcore.js';
 
 const GRID = 220;
 
@@ -482,7 +483,7 @@ async function apiError(res, what) {
 // so it is fitted and re-encoded once, which also pins the media type to
 // something the endpoint definitely accepts.
 const MAX_EDGE = 1400;
-function claudeImage(dataURL) {
+export function claudeImage(dataURL) {
   return new Promise(resolve => {
     const done = (media, data) => resolve({ type: 'image', source: { type: 'base64', media_type: media, data } });
     const raw = () => {
@@ -536,6 +537,124 @@ export function fitToEnvelope(masses, envelope) {
   return masses;
 }
 
+
+// ================= The audit grammar =================
+// Findings speak one syntax everywhere: { severity, where, issue, fix }.
+//   blocker — the scene is structurally wrong; building on it compounds the error
+//   major   — clearly visible deviation from the reference or the physics
+//   minor   — cosmetic; may survive convergence
+// Geometry findings come from code and are never negotiable; visual findings
+// come from an independent reviewer and are argued against the reference.
+
+export function geometryAudit(masses, envelope) {
+  const F = [];
+  const f = (severity, where, issue, fix) => F.push({ severity, where, issue, fix });
+  if (!masses?.length) {
+    f('blocker', 'scene', 'the scene is empty', 'submit level 0 first');
+    return { ok: false, findings: F, summary: 'Scene is empty.' };
+  }
+  const byId = new Map(masses.map(m => [m.id, m]));
+
+  for (const m of masses) {
+    // support chain: resolvable, acyclic, seated exactly
+    const chain = new Set([m.id]);
+    let p = m.on;
+    while (p && p !== 'ground') {
+      if (chain.has(p)) { f('blocker', m.id, 'cyclic support chain', 'point on at a real parent'); break; }
+      chain.add(p);
+      p = byId.get(p)?.on;
+      if (p === undefined) break;
+    }
+    if (m.on && m.on !== 'ground' && !byId.has(m.on)) f('blocker', m.id, `support "${m.on}" does not exist`, 'name an existing element or ground');
+    if (m.y > 0.06 && (!m.on || m.on === 'ground')) f('blocker', m.id, 'elevated but supported by nothing', 'name the element it rests on');
+    if (m.on && m.on !== 'ground') {
+      const sME = byId.get(m.on);
+      if (sME && Math.abs(m.y - (sME.y + sME.h)) > 0.03) f('major', m.id, `sits ${(m.y - (sME.y + sME.h)).toFixed(2)} m off its seat on ${sME.id}`, 'set y = parent.y + parent.h');
+    }
+    if (m.kind === 'member' && Math.min(m.w, m.d, m.h) > 1.2) f('major', m.id, 'labelled a member but over 1.2 m thick', 'thin it to 0.15-0.6 m or call it a volume');
+    if (envelope && Number.isFinite(+envelope.h) && m.y + m.h > envelope.h * 1.2) f('major', m.id, 'rises beyond the audited envelope', 'respect the envelope height');
+  }
+
+  // interpenetration: axis-aligned overlap volume between unrelated solids
+  const related = (a, b) => a.on === b.id || b.on === a.id || a.partOf === b.id || b.partOf === a.id
+    || (a.flush || []).some(x => String(x).endsWith(':' + b.id)) || (b.flush || []).some(x => String(x).endsWith(':' + a.id));
+  for (let i = 0; i < masses.length; i++) for (let j = i + 1; j < masses.length; j++) {
+    const a = masses[i], b = masses[j];
+    if (Math.abs(a.rotY || 0) > 2 || Math.abs(b.rotY || 0) > 2) {
+      // rotated boxes: axis-aligned math is only an approximation, so flag softly
+      const near = Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.z - b.z) < (a.d + b.d) / 2
+        && a.y < b.y + b.h && b.y < a.y + a.h;
+      if (near && !related(a, b)) f('minor', `${a.id}+${b.id}`, 'suspected interpenetration (rotated pair)', 'check and separate or relate them');
+      continue;
+    }
+    const ox = Math.min(a.x + a.w / 2, b.x + b.w / 2) - Math.max(a.x - a.w / 2, b.x - b.w / 2);
+    const oz = Math.min(a.z + a.d / 2, b.z + b.d / 2) - Math.max(a.z - a.d / 2, b.z - b.d / 2);
+    const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    if (ox <= 0 || oz <= 0 || oy <= 0) continue;
+    const overlap = ox * oz * oy;
+    const smaller = Math.min(a.w * a.d * a.h, b.w * b.d * b.h);
+    const share = overlap / smaller;
+    if (share > 0.5 && Math.abs(a.x - b.x) < 0.15 && Math.abs(a.y - b.y) < 0.15 && Math.abs(a.z - b.z) < 0.15) {
+      f('major', `${a.id}+${b.id}`, 'near-duplicate solids in the same place', 'delete one');
+    } else if (share > 0.08 && !related(a, b)) {
+      f('major', `${a.id}+${b.id}`, `interpenetrate by ${(share * 100).toFixed(0)}% of the smaller`, 'separate them or declare the relation');
+    } else if (share > 0.01 && !related(a, b)) {
+      f('minor', `${a.id}+${b.id}`, 'slight unrelated overlap', 'nudge apart or declare flush');
+    }
+  }
+
+  const count = sev => F.filter(x => x.severity === sev).length;
+  const ok = count('blocker') === 0 && count('major') === 0;
+  const summary = `${massExtents(masses)} Geometry audit: ${count('blocker')} blocker, ${count('major')} major, ${count('minor')} minor`
+    + (F.length ? ' — ' + F.slice(0, 6).map(x => `[${x.severity}] ${x.where}: ${x.issue}`).join('; ') + (F.length > 6 ? '; …' : '') : ' — clean.');
+  return { ok, findings: F, summary };
+}
+
+// Zoom tiles for the forensic read: the whole drawing plus its two halves at
+// double scale, so storey lines and thin members survive the vision grid.
+export async function zoomTiles(url) {
+  try {
+    const im = await loadImgEl(url);
+    const half = (sy, sh, label) => {
+      const cv = document.createElement('canvas');
+      const scale = Math.min(2, 1300 / im.width);
+      cv.width = Math.round(im.width * scale);
+      cv.height = Math.round(sh * scale);
+      const c = cv.getContext('2d');
+      c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
+      c.drawImage(im, 0, sy, im.width, sh, 0, 0, cv.width, cv.height);
+      return { label, url: cv.toDataURL('image/jpeg', 0.92) };
+    };
+    const h2 = Math.round(im.height * 0.56);
+    return [
+      half(0, h2, 'UPPER HALF, enlarged'),
+      half(im.height - h2, h2, 'LOWER HALF, enlarged'),
+    ];
+  } catch { return []; }
+}
+
+// Staged silhouette check: numbers measured from the actual render, so each
+// modelling stage is verified against the audit rather than remembered.
+export async function silhouetteMetrics(shotURL) {
+  try {
+    const im = await loadImgEl(shotURL);
+    const w = 300, h = Math.max(1, Math.round(im.height * 300 / im.width));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const c = cv.getContext('2d', { willReadFrequently: true });
+    c.drawImage(im, 0, 0, w, h);
+    const d = c.getImageData(0, 0, w, h).data;
+    const bg = [d[0], d[1], d[2]];
+    let minX = w, minY = h, maxX = -1, maxY = -1, ink = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const dr = d[i] - bg[0], dg = d[i + 1] - bg[1], db = d[i + 2] - bg[2];
+      if (dr * dr + dg * dg + db * db > 30 * 30) { ink++; minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+    }
+    if (maxX < minX) return null;
+    const bw = maxX - minX + 1, bh = maxY - minY + 1;
+    return { aspect: +(bw / bh).toFixed(2), fill: +(ink / (bw * bh)).toFixed(2), frameShare: +(bw / w).toFixed(2) };
+  } catch { return null; }
+}
 
 // ---------------- the builder loop ----------------
 // What makes an agent driving a CAD program precise is not the model — it is

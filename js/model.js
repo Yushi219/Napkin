@@ -2029,6 +2029,35 @@ export async function rhinoBytes(paramsJson, brief) {
     return doc.toByteArray();
 }
 
+// The control cage: every volume as a low-poly QUAD box, welded verts, one
+// object per element. In Rhino: import, select, ToSubD — and the massing can
+// be pushed around like clay while staying true to the audited composition.
+export function exportCageObj() {
+  if (!state.masses?.length) return false;
+  const L = ['# NAPKIN quad control cage — ToSubD in Rhino to sculpt', '# y-up metres'];
+  let base = 1;
+  for (const m of state.masses) {
+    const hw = m.w / 2, hd = m.d / 2;
+    const a = THREE.MathUtils.degToRad(m.rotY || 0);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    L.push('o ' + m.id);
+    for (const [px, py, pz] of [
+      [-hw, 0, -hd], [hw, 0, -hd], [hw, 0, hd], [-hw, 0, hd],
+      [-hw, m.h, -hd], [hw, m.h, -hd], [hw, m.h, hd], [-hw, m.h, hd],
+    ]) {
+      const x = m.x + px * ca + pz * sa;
+      const z = m.z - px * sa + pz * ca;
+      L.push(`v ${x.toFixed(3)} ${(m.y + py).toFixed(3)} ${z.toFixed(3)}`);
+    }
+    for (const q of [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]) {
+      L.push('f ' + q.map(i => base + i).join(' '));
+    }
+    base += 8;
+  }
+  download(new Blob([L.join('\n')], { type: 'text/plain' }), 'napkin-cage.obj');
+  return true;
+}
+
 export async function exportRhino(paramsJson, brief) {
   try {
     const bytes = await rhinoBytes(paramsJson, brief);
