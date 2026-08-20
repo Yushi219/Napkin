@@ -2188,35 +2188,166 @@ export async function rhinoBytes(paramsJson, brief) {
     const mod = await import('./vendor/rhino3dm.module.min.js');
     rhinoRT = await mod.default({ locateFile: f => new URL('./vendor/' + f, import.meta.url).href });
   }
-    const rhino = rhinoRT;
-    const doc = new rhino.File3dm();
-    try { doc.settings().modelUnitSystem = rhino.UnitSystem.Meters; } catch { }
-    try {
-      const layer = new rhino.Layer();
-      layer.name = 'NAPKIN building';
-      layer.color = { r: 189, g: 95, b: 61, a: 255 };
-      doc.layers().add(layer);
-    } catch { }
+  const rhino = rhinoRT;
+  const doc = new rhino.File3dm();
+  try { doc.settings().modelUnitSystem = rhino.UnitSystem.Meters; } catch { }
+  try {
+    const layer = new rhino.Layer();
+    layer.name = 'NAPKIN building';
+    layer.color = { r: 189, g: 95, b: 61, a: 255 };
+    doc.layers().add(layer);
+  } catch { }
+
+  // Real solids, not a triangle soup. Each volume becomes a capped extrusion
+  // of its rectangular footprint — a NURBS solid Rhino can fillet, boolean,
+  // offset and edit, and Grasshopper can drive. Three is Y-up, Rhino is Z-up:
+  // (x, y, z) -> (x, -z, y).
+  let solids = 0;
+  if (state.masses?.length) {
+    for (const m of state.masses) {
+      try {
+        const hw = m.w / 2, hd = m.d / 2;
+        const a = THREE.MathUtils.degToRad(m.rotY || 0);
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const corner = (px, pz) => {
+          const x = m.x + px * ca + pz * sa;
+          const z = m.z - px * sa + pz * ca;
+          return [x, -z];                       // Rhino XY
+        };
+        const ring = [corner(-hw, -hd), corner(hw, -hd), corner(hw, hd), corner(-hw, hd)];
+        const pl = new rhino.Polyline();
+        for (const [x, y] of ring) pl.add(x, y, m.y);
+        pl.add(ring[0][0], ring[0][1], m.y);    // close it
+        const ex = rhino.Extrusion.create(pl.toNurbsCurve(), Math.max(0.01, m.h), true);
+        if (!ex) continue;
+        let geo = ex;
+        try { const b = ex.toBrep(true); if (b) geo = b; } catch { /* extrusion is a solid too */ }
+        const attrs = new rhino.ObjectAttributes();
+        attrs.layerIndex = 0;
+        attrs.name = m.id || `volume ${solids + 1}`;
+        // provenance rides on the object, so a designer in Rhino can see where
+        // each solid came from and what it was called upstream
+        try {
+          attrs.setUserString('napkin.role', String(m.role || ''));
+          attrs.setUserString('napkin.kind', String(m.kind || 'volume'));
+          attrs.setUserString('napkin.on', String(m.on || 'ground'));
+          attrs.setUserString('napkin.size', `${m.w} x ${m.d} x ${m.h} m`);
+          attrs.setUserString('napkin.at', `${m.x}, ${m.y}, ${m.z}`);
+        } catch { }
+        doc.objects().add(geo, attrs);
+        solids++;
+      } catch (e) { console.warn('solid failed for', m.id, e); }
+    }
+  }
+
+  // Nothing parametric to extrude (the tower archetype, an imported mesh):
+  // fall back to meshes so the export is never empty.
+  if (!solids) {
     const v = new THREE.Vector3();
     let parts = 0;
     eachWorldMesh((pos, mw) => {
-      const m = new rhino.Mesh();
+      const mesh = new rhino.Mesh();
       for (let i = 0; i < pos.count; i++) {
         v.fromBufferAttribute(pos, i).applyMatrix4(mw);
-        m.vertices().add(v.x, -v.z, v.y);            // three Y-up -> Rhino Z-up
+        mesh.vertices().add(v.x, -v.z, v.y);
       }
-      for (let i = 0; i < pos.count; i += 3) m.faces().addTriFace(i, i + 1, i + 2);
+      for (let i = 0; i < pos.count; i += 3) mesh.faces().addTriFace(i, i + 1, i + 2);
       const attrs = new rhino.ObjectAttributes();
       attrs.layerIndex = 0;
       attrs.name = `napkin part ${parts++}`;
-      doc.objects().add(m, attrs);
+      doc.objects().add(mesh, attrs);
     });
-    try {
-      doc.strings().set('napkin.params', paramsJson);
-      doc.strings().set('napkin.brief', brief || '');
-      doc.strings().set('napkin.note', 'Parameters carried in napkin.params — rebuild parametrically in Grasshopper by mapping them to sliders.');
-    } catch { }
-    return doc.toByteArray();
+  }
+
+  try {
+    doc.strings().set('napkin.params', paramsJson);
+    doc.strings().set('napkin.brief', brief || '');
+    doc.strings().set('napkin.note', solids
+      ? `${solids} NURBS solids, one per volume. Parameters in napkin.params; napkin-grasshopper.py rebuilds them parametrically in a GhPython component.`
+      : 'Meshes (this model has no parametric volumes). Parameters in napkin.params.');
+  } catch { }
+  return doc.toByteArray();
+}
+
+// ---------------- Grasshopper ----------------
+// The definition, as a GhPython component's script. Paste it into a GhPython
+// component (or run it in Rhino's Python editor) and the whole composition
+// rebuilds as NURBS solids from the parameter block at the top — every number
+// a slider can drive.
+export function exportGrasshopper() {
+  if (!state.masses?.length) return false;
+  const rows = state.masses.map(m => '    ' + JSON.stringify({
+    id: m.id, role: m.role || 'volume', kind: m.kind || 'volume',
+    w: m.w, d: m.d, h: m.h, x: m.x, y: m.y, z: m.z, rotY: m.rotY || 0,
+    on: m.on || 'ground', facade: m.facade || 'solid',
+  })).join(',\n');
+  const py = `# NAPKIN -> Grasshopper
+# Paste into a GhPython component, or run in Rhino's Python editor.
+#
+# GhPython wiring (optional, for sliders):
+#   input  SCALE   number slider 0.3 .. 3.0   default 1.0
+#   input  HEIGHT  number slider 0.5 .. 2.0   default 1.0   (vertical only)
+#   output a       the NURBS solids
+#
+# Every solid is a capped extrusion of its footprint: a real Brep, so Rhino
+# and Grasshopper can fillet, boolean, offset and drive it.
+
+import math
+import Rhino.Geometry as rg
+
+# ---- the composition, straight from the model ----------------------------
+# metres; y is up here (as drawn), converted to Rhino Z below
+VOLUMES = [
+${rows},
+]
+
+try:
+    S = float(SCALE)
+except Exception:
+    S = 1.0
+try:
+    HS = float(HEIGHT)
+except Exception:
+    HS = 1.0
+
+
+def solid(v, s=1.0, hs=1.0):
+    """One volume -> one capped NURBS extrusion."""
+    w, d, h = v["w"] * s, v["d"] * s, v["h"] * s * hs
+    cx, cy, cz = v["x"] * s, v["y"] * s * hs, v["z"] * s
+    a = math.radians(v.get("rotY", 0.0))
+    ca, sa = math.cos(a), math.sin(a)
+    pts = []
+    for px, pz in ((-w / 2, -d / 2), (w / 2, -d / 2), (w / 2, d / 2), (-w / 2, d / 2)):
+        X = cx + px * ca + pz * sa
+        Z = cz - px * sa + pz * ca
+        pts.append(rg.Point3d(X, -Z, cy))          # three Y-up -> Rhino Z-up
+    pts.append(pts[0])
+    crv = rg.PolylineCurve(pts)
+    ext = rg.Extrusion.Create(crv, h, True)
+    if ext is None:
+        return None
+    brep = ext.ToBrep()
+    if brep:
+        brep.SetUserString("napkin.id", str(v["id"]))
+        brep.SetUserString("napkin.role", str(v.get("role", "")))
+    return brep
+
+
+a = [b for b in (solid(v, S, HS) for v in VOLUMES) if b]
+
+# Running inside Rhino rather than Grasshopper? Bake them.
+if __name__ == "__main__" and "ghenv" not in dir():
+    try:
+        import scriptcontext as sc
+        for b in a:
+            sc.doc.Objects.AddBrep(b)
+        sc.doc.Views.Redraw()
+    except Exception:
+        pass
+`;
+  download(new Blob([py], { type: 'text/x-python' }), 'napkin-grasshopper.py');
+  return true;
 }
 
 // The control cage: every volume as a low-poly QUAD box, welded verts, one

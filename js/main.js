@@ -1442,10 +1442,12 @@ function wire() {
     ui.toast('Writing .3dm…');
     const kind = await model.exportRhino(JSON.stringify(model.snapshotState(), null, 2), metricsBrief(compute(customTypeText)));
     const caged = model.exportCageObj();
+    const gh = model.exportGrasshopper();
     ui.toast((kind === '3dm'
-      ? 'napkin-building.3dm downloaded — drag it into Rhino. Parameters ride along in document user text.'
+      ? 'napkin-building.3dm — NURBS solids, one per volume: fillet, boolean and edit them in Rhino.'
       : 'Rhino engine unavailable here — exported .obj instead (Rhino opens it fine).')
-      + (caged ? ' Plus napkin-cage.obj: quad control cages — select and ToSubD in Rhino to sculpt.' : ''), 5200);
+      + (gh ? ' napkin-grasshopper.py — paste into a GhPython component to rebuild it parametrically.' : '')
+      + (caged ? ' napkin-cage.obj — quad cages for ToSubD sculpting.' : ''), 7000);
   });
 
   $('btn-spin').addEventListener('click', () => {
