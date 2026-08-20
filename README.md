@@ -22,7 +22,7 @@ fully offline except the optional AI calls.
    *Silhouette* (front elevation → floors, setbacks, taper via row-scan) and
    *Plan* (closed outline → footprint polygon via contour trace). Drawn strokes
    are vectors — no ML needed; photos go through adaptive thresholding into the
-   exact same pipeline. Claude vision (optional) advises on photos.
+   exact same pipeline. OpenAI vision (optional) reads photos and drawings.
 2. **Build** — the parametric model rises in the middle pane. In plan mode the
    left pane splits: sketch above, ink line-study below. Keep drawing — the
    model follows your hand live.
@@ -33,7 +33,7 @@ fully offline except the optional AI calls.
 ## The two jumps back (reverse)
 
 - **⇪ Decompose** (right pane): upload a rendering or photo of a building —
-  Claude vision decomposes it into massing parameters (floors, taper, twist,
+  OpenAI vision decomposes it into massing parameters (floors, taper, twist,
   setbacks, program); silhouette extraction is the no-key fallback. No napkin
   involved.
 - **⇪ 3D** (middle pane): upload an .obj/.glb — it takes the stage for
@@ -45,7 +45,7 @@ fully offline except the optional AI calls.
 
 The chat bar edits the 3D model in natural language — English or Chinese:
 "three floors taller", "twist it 25 degrees", "改成实验室，加个绿屋顶".
-Claude translates speech to clamped parameter edits; a bilingual keyword
+ChatGPT translates speech to clamped parameter edits; a bilingual keyword
 engine answers offline. Every edit is a version commit.
 
 ## Dashboard
@@ -103,7 +103,21 @@ which goes the other way (any GH definition → op schema).
 
 ## Keys (⚙)
 
-- Anthropic — chat modelling, photo advice, render decomposition
+- OpenAI — reference audit, constrained scene building, visual self-checks and edits
 - Gemini — Nano Banana Pro renders
 Everything degrades gracefully without them. Keys stay in localStorage and go
 only to their own APIs.
+
+## Accurate reconstruction mode
+
+The OpenAI path is intentionally multi-stage. It crops empty paper, locks a
+level-by-level visual audit, builds a strict scene of occupied volumes, slabs
+and thin members, solves support/flush constraints deterministically, frames an
+isolated CAD view, and compares that render against the reference at least
+twice before accepting the result. The scene supports up to 32 elements and
+0.08 m members, so open frames and posts are not inflated into 2 m blocks.
+
+Use `gpt-5.6-terra` with `high` reasoning for routine work. Use
+`gpt-5.6-sol` with `high` or `xhigh` reasoning for difficult single-view
+reconstruction. `gpt-5.6-luna` remains available for inexpensive drafts, but
+it is not the default fidelity setting.

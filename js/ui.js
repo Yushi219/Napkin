@@ -131,8 +131,8 @@ const TOWER_CHOICES = [
 const TOWER_FLAGS = [['spine', 'Exposed spine truss'], ['greenRoof', 'Green roof']];
 
 const MASS_FIELDS = [
-  ['w', 2, 90, 0.5], ['d', 2, 90, 0.5], ['h', 2, 120, 0.5],
-  ['x', -80, 80, 0.5], ['y', 0, 80, 0.5], ['z', -80, 80, 0.5], ['rotY', -90, 90, 1],
+  ['w', 0.1, 120, 0.1], ['d', 0.1, 120, 0.1], ['h', 0.1, 240, 0.1],
+  ['x', -90, 90, 0.1], ['y', 0, 120, 0.1], ['z', -90, 90, 0.1], ['rotY', -90, 90, 1],
 ];
 const FACADES = ['solid', 'glass', 'slats-v', 'slats-h'];
 
@@ -301,6 +301,7 @@ export function closeModal() { $('modal-root').classList.add('hidden'); }
 // ---------- settings ----------
 export function settingsModal(onSave) {
   const g = k => localStorage.getItem(k) || '';
+  const reasoning = g('napkin_openai_reasoning') || window.NAPKIN_CONFIG?.openaiReasoning || 'high';
   const sponsors = SPONSORS.map(s => `
     <div class="sponsor-row">
       <div><div class="s-name">${s.name}</div><div class="s-role">${s.role}</div></div>
@@ -310,10 +311,13 @@ export function settingsModal(onSave) {
   openModal(`
     <div class="modal-kicker">Settings</div>
     <div class="modal-title" style="font-size:20px">Engines & platforms</div>
-    <div class="settings-row"><label>OpenAI API key — reads the drawing, builds and edits the model</label></label>
+    <div class="settings-row"><label>OpenAI API key — reads the drawing, builds and edits the model</label>
       <input id="set-openai" type="password" placeholder="sk-proj-…" value="${esc(g('napkin_openai_key') || (window.NAPKIN_CONFIG?.openaiKey ?? ''))}" /></div>
     <div class="settings-row"><label>OpenAI model for the builder</label>
-      <input id="set-openai-model" placeholder="gpt-5.1" value="${esc(g('napkin_openai_model'))}" /></div>
+      <input id="set-openai-model" placeholder="gpt-5.6-terra" value="${esc(g('napkin_openai_model') || (window.NAPKIN_CONFIG?.openaiModel ?? ''))}" />
+      <div class="settings-note">Recommended: gpt-5.6-terra for normal reconstruction; gpt-5.6-sol for the hardest drawings. Luna is the economy/high-volume tier.</div></div>
+    <div class="settings-row"><label>Builder reasoning effort</label>
+      <select id="set-openai-reasoning">${['medium', 'high', 'xhigh', 'max'].map(v => `<option value="${v}" ${v === reasoning ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     <div class="settings-row"><label>Gemini API key — Nano Banana Pro renders</label>
       <input id="set-gemini" type="password" placeholder="AIza…" value="${esc(g('napkin_gemini_key') || (window.NAPKIN_CONFIG?.geminiKey ?? ''))}" /></div>
     <div style="margin:16px 0 6px; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted)">Sponsor platforms</div>
@@ -334,6 +338,7 @@ export function settingsModal(onSave) {
     localStorage.setItem('napkin_gemini_key', take('set-gemini'));
     localStorage.setItem('napkin_openai_key', take('set-openai'));
     localStorage.setItem('napkin_openai_model', clean(document.getElementById('set-openai-model').value));
+    localStorage.setItem('napkin_openai_reasoning', clean(document.getElementById('set-openai-reasoning').value));
     for (const s of SPONSORS) localStorage.setItem(s.field, clean(document.getElementById(`set-${s.id}`).value));
     closeModal();
     if (stripped) toast('Saved — stray invisible characters were removed from a key as it was pasted.', 4200);

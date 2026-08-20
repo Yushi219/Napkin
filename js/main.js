@@ -1,6 +1,6 @@
 // Orchestration: landing → workspace, sketch → parameters → model → metrics → render.
 import * as sketch from './sketch.js';
-import { interpretViews, interpretMassing, visionMasses, visionAnnotatedEdit, visionRefine, imageInkCanvas } from './interpret.js';
+import { interpretViews, interpretMassing, visionMasses, visionAnnotatedEdit, visionRefine, imageInkCanvas, cropReferenceImage } from './interpret.js';
 import * as model from './model.js';
 import { compute, TYPES } from './metrics.js';
 import { renderImage, hasGemini, conceptModelImage, writeRenderPrompt } from './render.js';
@@ -158,7 +158,11 @@ function openProject(item, isUser) {
   }
   enterWorkspace();
   refresh();
-  if (item.camera) { model.setCameraAngle(item.camera.yawDeg, item.camera.pitchDeg); lastCamera = item.camera; }
+  if (item.camera) {
+    model.setCameraAngle(item.camera.yawDeg, item.camera.pitchDeg, item.camera.fovDeg);
+    model.frameBuilding(1.14);
+    lastCamera = item.camera;
+  }
   syncParams();
   lastSketchShot = null;                    // it was never a photographed napkin
   if (deviceKind() !== 'phone') {
@@ -327,6 +331,7 @@ async function buildPasses() {
   if (hasAI() || hasGPT()) {
     $('btn-build').disabled = true;
     lastSketchShot = sketch.sketchDataURL();
+    lastReferenceShot = await cropReferenceImage(lastSketchShot);
 
     // Step 1 (optional): Nano Banana redraws the scribble as a clean study model.
     // Reading that is far more reliable than reading raw napkin ink.
@@ -351,7 +356,7 @@ async function buildPasses() {
       }
     }
 
-    const busy = ui.addChatMsg('ai', 'Pass 2 — Claude is building it: place, look, correct…', 'busy');
+    const busy = ui.addChatMsg('ai', 'Pass 2 — ChatGPT is auditing, building, looking and correcting…', 'busy');
     ui.veil(true, 'pass 2 — building: place, look, correct…');
     let agentRan = false;
     try {
@@ -366,18 +371,23 @@ async function buildPasses() {
           leaveImported();
           model.applyPatch({ archetype: null, masses, profile: null, profileSide: null, footprint: null, segments: [], mode: 'massing' });
           refresh();
-          if (camera) model.setCameraAngle(camera.yawDeg, camera.pitchDeg);
+          if (camera) model.setCameraAngle(camera.yawDeg, camera.pitchDeg, camera.fovDeg);
+          model.frameBuilding(1.14);
           await new Promise(r => setTimeout(r, 120));   // one painted frame
         },
-        snapshot: () => model.modelSnapshot(1100),
+        snapshot: () => model.modelSnapshot(1100, { isolate: true }),
         step: label => { ui.veil(true, label); busy.textContent = label; },
+        audit: a => {
+          const label = `${a.visibleStoreys} levels · ${a.elements.length} essential elements · ${a.projection}`;
+          ui.addChatMsg('ai', `Reference locked — ${label}.`, 'prompt');
+        },
       };
       // the loop compares against the napkin itself; the concept render, when
       // pass 1 produced one, goes along only as a reading aid
       io.aidURL = readShot !== lastSketchShot ? readShot : null;
       let v = null, engineUsed = '';
       try {
-        v = await gptBuildMasses(lastSketchShot, io); engineUsed = 'ChatGPT'; agentRan = true;
+        v = await gptBuildMasses(lastReferenceShot || lastSketchShot, io); engineUsed = 'ChatGPT'; agentRan = true;
       } catch (agentErr) { console.warn('ChatGPT builder failed', agentErr); }
       if (!v && hasAI()) {
         ui.veil(true, 'pass 2 — reading volumes and storeys…');
@@ -416,7 +426,11 @@ async function buildPasses() {
   clearSelection();
   model.applyPatch(patch);
   refresh();
-  if (pendingCamera) { model.setCameraAngle(pendingCamera.yawDeg, pendingCamera.pitchDeg); lastCamera = pendingCamera; pendingCamera = null; }
+  if (pendingCamera) {
+    model.setCameraAngle(pendingCamera.yawDeg, pendingCamera.pitchDeg, pendingCamera.fovDeg);
+    model.frameBuilding(1.14);
+    lastCamera = pendingCamera; pendingCamera = null;
+  }
   syncParams();
   commitVersion(versions.stream.commits.length ? `sketch v${versions.stream.commits.length + 1}` : 'first sketch');
   if (deviceKind() === 'phone') showPane('model');
@@ -431,6 +445,7 @@ let agentRanOnLastBuild = false;
 let pendingCamera = null;
 let lastCamera = null;
 let lastSketchShot = null;
+let lastReferenceShot = null;
 let conceptURL = null;
 
 // ---------------- analysis-by-synthesis refinement ----------------
@@ -442,13 +457,15 @@ async function runRefine(auto = false) {
   if ($('btn-refine')) $('btn-refine').disabled = true;
   ui.veil(true, 'checking the model against your sketch…');
   try {
-    if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg);
-    const shot = model.modelSnapshot();
-    const r = await visionRefine(lastSketchShot, shot, model.state.masses, lastCamera, anthropicCfg());
+    if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg, lastCamera.fovDeg);
+    model.frameBuilding(1.14);
+    const shot = model.modelSnapshot(1280, { isolate: true });
+    const r = await visionRefine(lastReferenceShot || lastSketchShot, shot, model.state.masses, lastCamera, anthropicCfg());
     model.applyPatch({ masses: r.masses });
     if (r.camera) { lastCamera = r.camera; }
     refresh();
-    if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg);
+    if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg, lastCamera.fovDeg);
+    model.frameBuilding(1.14);
     syncParams();
     commitVersion('⟲ refine');
     busy.classList.remove('busy');

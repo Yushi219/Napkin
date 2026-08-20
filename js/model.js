@@ -160,16 +160,19 @@ export function towerStats() {
     let gfa = 0, facade = 0, height = 0, minPlanTall = 1e9, tallH = 0;
     let bbW = 0, bbD = 0, plateDepth = 0, plateArea = 0;
     for (const m of state.masses) {
-      const floors = Math.max(1, Math.round(m.h / state.floorHeight));
-      gfa += m.w * m.d * floors;
-      facade += 2 * (m.w + m.d) * m.h;
+      const occupied = m.kind !== 'member' && !['beam', 'column', 'post', 'frame', 'screen', 'railing', 'canopy', 'roof'].includes(m.role);
+      const floors = m.storeys || Math.max(1, Math.round(m.h / state.floorHeight));
+      if (occupied) {
+        gfa += m.w * m.d * floors;
+        facade += 2 * (m.w + m.d) * m.h;
+      }
       height = Math.max(height, m.y + m.h);
       bbW = Math.max(bbW, Math.abs(m.x) + m.w / 2);
       bbD = Math.max(bbD, Math.abs(m.z) + m.d / 2);
-      if (m.h > tallH) { tallH = m.h; minPlanTall = Math.min(m.w, m.d); }
-      if (m.w * m.d > plateArea) { plateArea = m.w * m.d; plateDepth = Math.min(m.w, m.d); }
+      if (occupied && m.h > tallH) { tallH = m.h; minPlanTall = Math.min(m.w, m.d); }
+      if (occupied && m.w * m.d > plateArea) { plateArea = m.w * m.d; plateDepth = Math.min(m.w, m.d); }
     }
-    return { gfa, facade, height, area0: plateArea, minPlan: minPlanTall, bbW: bbW * 2, bbD: bbD * 2, plateDepth };
+    return { gfa, facade, height, area0: plateArea, minPlan: Number.isFinite(minPlanTall) ? minPlanTall : 1, bbW: bbW * 2, bbD: bbD * 2, plateDepth };
   }
   const height = state.floors * state.floorHeight;
   if (state.profile) {
@@ -676,17 +679,22 @@ export function restoreCameraPose(p) {
   controls.update();
 }
 
-export function setCameraAngle(yawDeg, pitchDeg) {
+export function setCameraAngle(yawDeg, pitchDeg, fovDeg) {
   const st = towerStats();
   const r = Math.max(st.bbW, st.bbD, st.height) * 1.9 + 25;
   const yaw = THREE.MathUtils.degToRad(yawDeg ?? 30);
   const pitch = THREE.MathUtils.degToRad(Math.max(4, Math.min(70, pitchDeg ?? 18)));
+  if (Number.isFinite(+fovDeg)) {
+    camera.fov = Math.max(20, Math.min(65, +fovDeg));
+    camera.updateProjectionMatrix();
+  }
   camera.position.set(
     Math.sin(yaw) * Math.cos(pitch) * r,
     Math.sin(pitch) * r + st.height * 0.35,
     Math.cos(yaw) * Math.cos(pitch) * r,
   );
   controls.target.set(0, st.height * 0.38, 0);
+  controls.update();
 }
 
 // ---- picking + selection outlines ----
@@ -1665,8 +1673,8 @@ function buildMasses() {
     grp.userData.massIndex = mi;
     const isGlass = ms.facade === 'glass';
     const bodyMat = isGlass ? MAT.glass : MAT.clay;
-    const floors = Math.max(1, Math.round(ms.h / fh));
-    const articulate = detailLevel !== 'massing' && ms.h >= fh * 1.4;
+    const floors = ms.storeys || Math.max(1, Math.round(ms.h / fh));
+    const articulate = ms.kind !== 'member' && detailLevel !== 'massing' && ms.h >= fh * 1.4;
 
     if (!articulate) {
       const box = new THREE.Mesh(new THREE.BoxGeometry(ms.w, ms.h, ms.d), bodyMat);
@@ -1848,7 +1856,7 @@ function rebuildSolid() {
 // The render's input image. Never trust the on-screen canvas size: a narrow
 // pane or a hidden tab would hand the image model a thumbnail it cannot read
 // the massing from. Render offscreen at a fixed, generous resolution instead.
-export function modelSnapshot(longEdge = 1280) {
+export function modelSnapshot(longEdge = 1280, { isolate = false } = {}) {
   if (!renderer || !camera) return null;
   const el = renderer.domElement;
   const w0 = el.width, h0 = el.height;
@@ -1858,18 +1866,44 @@ export function modelSnapshot(longEdge = 1280) {
   const w = Math.round(aspect >= 1 ? longEdge : longEdge * aspect);
   const h = Math.round(aspect >= 1 ? longEdge / aspect : longEdge);
   const dpr0 = renderer.getPixelRatio();
-  renderer.setPixelRatio(1);
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.render(scene, camera);
-  const url = el.toDataURL('image/png');
-  renderer.setPixelRatio(dpr0);
-  renderer.setSize(w0 / dpr0, h0 / dpr0, false);
-  camera.aspect = (el.clientWidth || 4) / (el.clientHeight || 3);
-  camera.updateProjectionMatrix();
-  renderer.render(scene, camera);
-  return url;
+  const hidden = isolate ? [contextGroup, sunDisc, sunPathLine, particles, skyMesh, sketchGroup].filter(Boolean) : [];
+  const visibility = hidden.map(o => o.visible);
+  const bg0 = scene.background, fog0 = scene.fog;
+  let analysisGround = null;
+  try {
+    if (isolate) {
+      hidden.forEach(o => { o.visible = false; });
+      scene.background = new THREE.Color(0xf7f5ef);
+      scene.fog = null;
+      const span = Math.max(24, designedFootprint() * 3.2);
+      analysisGround = new THREE.Mesh(
+        new THREE.PlaneGeometry(span, span),
+        new THREE.MeshStandardMaterial({ color: 0xe6e1d5, roughness: 1, metalness: 0 }),
+      );
+      analysisGround.rotation.x = -Math.PI / 2;
+      analysisGround.position.y = -0.025;
+      analysisGround.receiveShadow = true;
+      scene.add(analysisGround);
+    }
+    renderer.setPixelRatio(1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+    return el.toDataURL('image/png');
+  } finally {
+    if (analysisGround) {
+      scene.remove(analysisGround);
+      analysisGround.geometry.dispose(); analysisGround.material.dispose();
+    }
+    hidden.forEach((o, i) => { o.visible = visibility[i]; });
+    scene.background = bg0; scene.fog = fog0;
+    renderer.setPixelRatio(dpr0);
+    renderer.setSize(w0 / dpr0, h0 / dpr0, false);
+    camera.aspect = (el.clientWidth || 4) / (el.clientHeight || 3);
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  }
 }
 
 // ---------------- reverse: imported 3D mesh ----------------

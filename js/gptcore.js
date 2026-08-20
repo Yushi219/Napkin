@@ -9,7 +9,8 @@ const clean = v => String(v ?? '').replace(/[^\x21-\x7E]/g, '');
 export function gptConfig() {
   return {
     key: clean(localStorage.getItem('napkin_openai_key') || window.NAPKIN_CONFIG?.openaiKey || ''),
-    model: clean(localStorage.getItem('napkin_openai_model') || window.NAPKIN_CONFIG?.openaiModel || 'gpt-5.1'),
+    model: clean(localStorage.getItem('napkin_openai_model') || window.NAPKIN_CONFIG?.openaiModel || 'gpt-5.6-terra'),
+    reasoning: clean(localStorage.getItem('napkin_openai_reasoning') || window.NAPKIN_CONFIG?.openaiReasoning || 'high'),
   };
 }
 export function hasGPT() { return !!gptConfig().key; }
@@ -22,13 +23,17 @@ export async function gptError(res, tag) {
 
 // Anthropic content block -> OpenAI content part
 const toPart = c => c.type === 'image'
-  ? { type: 'image_url', image_url: { url: `data:${c.source.media_type};base64,${c.source.data}` } }
+  ? { type: 'image_url', image_url: { url: `data:${c.source.media_type};base64,${c.source.data}`, detail: 'high' } }
   : { type: 'text', text: c.text ?? String(c) };
+
+export function reasoningArgs(model, effort = 'high') {
+  return /^(gpt-5|o\d)/i.test(model || '') ? { reasoning_effort: effort } : {};
+}
 
 // body: { model?, max_tokens, system?, messages: [{role, content: string|blocks[]}] }
 // returns { text, stopReason } — the shape the old parsing code expects.
 export async function gptVisionCompat(body, tag = 'gpt') {
-  const { key, model } = gptConfig();
+  const { key, model, reasoning } = gptConfig();
   if (!key) throw new Error(tag + ': no OpenAI key — add one in the settings');
   const messages = [];
   if (body.system) messages.push({ role: 'system', content: body.system });
@@ -41,7 +46,11 @@ export async function gptVisionCompat(body, tag = 'gpt') {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
-    body: JSON.stringify({ model, messages, max_completion_tokens: body.max_tokens || 2000 }),
+    body: JSON.stringify({
+      model, messages, max_completion_tokens: body.max_tokens || 2000,
+      ...reasoningArgs(model, reasoning),
+      ...(body.response_format ? { response_format: body.response_format } : {}),
+    }),
   });
   if (!res.ok) throw await gptError(res, tag);
   const data = await res.json();

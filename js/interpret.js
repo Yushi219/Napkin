@@ -370,10 +370,20 @@ export function parseJsonLoose(text, stopReason) {
 export function sanitizeMasses(arr) {
   if (!Array.isArray(arr)) return null;
   const cl = (v, a, b, d) => Number.isFinite(+v) ? Math.max(a, Math.min(b, +v)) : d;
-  const out = arr.slice(0, 10).map((m, i) => ({
-    id: String(m.id || m.role || `v${i + 1}`).slice(0, 24),
-    role: String(m.role || `volume-${i + 1}`).slice(0, 24),
-    w: cl(m.w, 2, 90, 15), d: cl(m.d, 2, 90, 12), h: cl(m.h, 2, 180, 12),
+  const used = new Set();
+  const out = arr.slice(0, 32).map((m, i) => {
+    const baseId = String(m.id || m.role || `v${i + 1}`).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 32) || `v${i + 1}`;
+    let id = baseId, n = 2;
+    while (used.has(id)) id = `${baseId.slice(0, 27)}-${n++}`;
+    used.add(id);
+    const role = String(m.role || `volume-${i + 1}`).slice(0, 32);
+    const member = ['beam', 'column', 'post', 'frame', 'screen', 'railing'].includes(role);
+    const thin = member ? 0.08 : 0.25;
+    return {
+    id,
+    kind: ['volume', 'slab', 'member'].includes(m.kind) ? m.kind : (member ? 'member' : role === 'slab' ? 'slab' : 'volume'),
+    role,
+    w: cl(m.w, thin, 120, member ? 0.35 : 15), d: cl(m.d, thin, 120, member ? 0.35 : 12), h: cl(m.h, thin, 240, member ? 3 : 12),
     x: cl(m.x, -90, 90, 0), y: cl(m.y, 0, 120, 0), z: cl(m.z, -90, 90, 0),
     rotY: cl(m.rotY, -90, 90, 0),
     facade: ['slats-v', 'slats-h', 'glass', 'solid'].includes(m.facade) ? m.facade : 'solid',
@@ -382,7 +392,9 @@ export function sanitizeMasses(arr) {
     flush: Array.isArray(m.flush) ? m.flush.slice(0, 4).map(String) : [],
     partOf: typeof m.partOf === 'string' ? m.partOf.slice(0, 24) : null,
     storeys: Number.isFinite(+m.storeys) ? Math.round(+m.storeys) : null,
-  })).filter(m => m.w > 1 && m.h > 1);
+    level: Number.isFinite(+m.level) ? Math.max(0, Math.round(+m.level)) : null,
+    };
+  }).filter(m => m.w >= 0.08 && m.d >= 0.08 && m.h >= 0.08);
   return out.length ? snapMasses(out) : null;
 }
 
@@ -390,26 +402,66 @@ export function sanitizeMasses(arr) {
 // hints from the model are resolved into EXACT shared coordinates.
 export function snapMasses(masses) {
   const byId = new Map(masses.map(m => [m.id, m]));
-  for (const m of masses) {
-    if (m.on && m.on !== 'ground') {
-      const s = byId.get(m.on);
-      if (s) m.y = Math.round((s.y + s.h) * 100) / 100;
-    } else if (m.on === 'ground' && !m.cantilever) m.y = 0;
-  }
-  for (const m of masses) {
-    for (const f of m.flush || []) {
-      const [face, id] = String(f).split(':');
-      const t = byId.get(id);
-      if (!t) continue;
-      const r2 = v => Math.round(v * 100) / 100;
-      if (face === 'front') m.z = r2(t.z + t.d / 2 - m.d / 2);
-      else if (face === 'back') m.z = r2(t.z - t.d / 2 + m.d / 2);
-      else if (face === 'left') m.x = r2(t.x - t.w / 2 + m.w / 2);
-      else if (face === 'right') m.x = r2(t.x + t.w / 2 - m.w / 2);
-      else if (face === 'top') m.y = r2(t.y + t.h - m.h);
+  const resolved = new Set();
+  const resolveSupport = (m, trail = new Set()) => {
+    if (resolved.has(m.id)) return true;
+    if (trail.has(m.id)) return false;
+    if (m.on === 'ground') { m.y = 0; resolved.add(m.id); return true; }
+    const s = m.on ? byId.get(m.on) : null;
+    if (!s || s === m) return false;
+    const next = new Set(trail); next.add(m.id);
+    if (!resolveSupport(s, next)) return false;
+    m.y = Math.round((s.y + s.h) * 100) / 100;
+    resolved.add(m.id);
+    return true;
+  };
+  for (const m of masses) resolveSupport(m);
+  // A couple of passes also resolve face constraints that reference one another.
+  for (let pass = 0; pass < 2; pass++) {
+    for (const m of masses) {
+      for (const f of m.flush || []) {
+        const split = String(f).indexOf(':');
+        const face = split > 0 ? String(f).slice(0, split) : '';
+        const id = split > 0 ? String(f).slice(split + 1) : '';
+        const t = byId.get(id);
+        if (!t || t === m) continue;
+        const r2 = v => Math.round(v * 100) / 100;
+        if (face === 'front') m.z = r2(t.z + t.d / 2 - m.d / 2);
+        else if (face === 'back') m.z = r2(t.z - t.d / 2 + m.d / 2);
+        else if (face === 'left') m.x = r2(t.x - t.w / 2 + m.w / 2);
+        else if (face === 'right') m.x = r2(t.x + t.w / 2 - m.w / 2);
+        else if (face === 'top') m.y = r2(t.y + t.h - m.h);
+        else if (face === 'center-x') m.x = r2(t.x);
+        else if (face === 'center-z') m.z = r2(t.z);
+      }
     }
   }
   return masses;
+}
+
+export function sceneDiagnostics(masses) {
+  if (!masses?.length) return { ok: false, issues: ['scene is empty'], summary: 'Scene is empty.' };
+  const byId = new Map(masses.map(m => [m.id, m]));
+  const issues = [];
+  for (const m of masses) {
+    const chain = new Set([m.id]);
+    let parent = m.on;
+    while (parent && parent !== 'ground') {
+      if (chain.has(parent)) { issues.push(`${m.id} has a cyclic support chain`); break; }
+      chain.add(parent); parent = byId.get(parent)?.on;
+    }
+    if (m.on && m.on !== 'ground' && !byId.has(m.on)) issues.push(`${m.id} names missing support ${m.on}`);
+    if (m.y > 0.06 && (!m.on || m.on === 'ground')) issues.push(`${m.id} is elevated but has no supporting parent`);
+    if (m.on && m.on !== 'ground') {
+      const s = byId.get(m.on);
+      if (s && Math.abs(m.y - (s.y + s.h)) > 0.03) issues.push(`${m.id} does not sit exactly on ${s.id}`);
+    }
+    if (m.kind === 'member' && Math.min(m.w, m.d, m.h) > 1.2) issues.push(`${m.id} is labelled a member but is implausibly thick`);
+  }
+  const roles = masses.reduce((a, m) => (a[m.role] = (a[m.role] || 0) + 1, a), {});
+  const summary = `${massExtents(masses)} Roles: ${Object.entries(roles).map(([k, v]) => `${k}×${v}`).join(', ')}.`
+    + (issues.length ? ` Constraint errors: ${issues.join('; ')}.` : ' All declared supports resolve exactly.');
+  return { ok: issues.length === 0, issues, summary };
 }
 
 // ---------------- talking to the vision endpoint ----------------
@@ -497,6 +549,41 @@ function loadImgEl(url) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
 }
 
+// Trim empty paper before vision. A phone photo usually fills the frame and is
+// returned unchanged; a small pencil building on a large white canvas becomes
+// several times larger in the model's visual token grid.
+export async function cropReferenceImage(url) {
+  try {
+    const im = await loadImgEl(url);
+    const scale = Math.min(1, 1200 / Math.max(im.width, im.height));
+    const w = Math.max(1, Math.round(im.width * scale)), h = Math.max(1, Math.round(im.height * scale));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const c = cv.getContext('2d', { willReadFrequently: true });
+    c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); c.drawImage(im, 0, 0, w, h);
+    const px = c.getImageData(0, 0, w, h).data;
+    const corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]];
+    const bg = [0, 1, 2].map(k => corners.reduce((s, [x, y]) => s + px[(y * w + x) * 4 + k], 0) / 4);
+    let minX = w, minY = h, maxX = -1, maxY = -1, ink = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const dr = px[i] - bg[0], dg = px[i + 1] - bg[1], db = px[i + 2] - bg[2];
+      if (dr * dr + dg * dg + db * db > 34 * 34) {
+        ink++; minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      }
+    }
+    if (ink < 40 || maxX < minX) return url;
+    const bw = maxX - minX + 1, bh = maxY - minY + 1;
+    if (bw > w * 0.88 && bh > h * 0.88) return url;
+    const pad = Math.round(Math.max(bw, bh) * 0.1);
+    minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+    maxX = Math.min(w - 1, maxX + pad); maxY = Math.min(h - 1, maxY + pad);
+    const out = document.createElement('canvas'); out.width = maxX - minX + 1; out.height = maxY - minY + 1;
+    const oc = out.getContext('2d'); oc.fillStyle = '#fff'; oc.fillRect(0, 0, out.width, out.height);
+    oc.drawImage(cv, minX, minY, out.width, out.height, 0, 0, out.width, out.height);
+    return out.toDataURL('image/jpeg', 0.94);
+  } catch { return url; }
+}
+
 // One picture, two panes: the target on the left, the model on the right.
 // Sketch2BIM and the BlenderGym line of work both find that a model corrects
 // far better against a single side-by-side than against two separate images —
@@ -504,18 +591,21 @@ function loadImgEl(url) {
 export async function pairPicture(leftURL, rightURL) {
   try {
     const [a, b] = await Promise.all([loadImgEl(leftURL), loadImgEl(rightURL)]);
-    const H = 560;
-    const wa = Math.round(a.width * H / a.height), wb = Math.round(b.width * H / b.height);
+    const W = 640, H = 600;
     const cv = document.createElement('canvas');
-    cv.width = wa + wb + 6; cv.height = H + 26;
+    cv.width = W * 2 + 6; cv.height = H + 30;
     const c = cv.getContext('2d');
     c.fillStyle = '#ffffff'; c.fillRect(0, 0, cv.width, cv.height);
-    c.drawImage(a, 0, 26, wa, H);
-    c.drawImage(b, wa + 6, 26, wb, H);
-    c.fillStyle = '#111'; c.fillRect(wa, 0, 6, cv.height);
+    const contain = (im, x) => {
+      const s = Math.min((W - 24) / im.width, (H - 24) / im.height);
+      const dw = im.width * s, dh = im.height * s;
+      c.drawImage(im, x + (W - dw) / 2, 30 + (H - dh) / 2, dw, dh);
+    };
+    contain(a, 0); contain(b, W + 6);
+    c.fillStyle = '#111'; c.fillRect(W, 0, 6, cv.height);
     c.font = 'bold 15px sans-serif';
     c.fillText('TARGET — the drawing', 8, 18);
-    c.fillText('CURRENT MODEL', wa + 14, 18);
+    c.fillText('CURRENT MODEL — isolated CAD view', W + 14, 18);
     return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: cv.toDataURL('image/jpeg', 0.88).split(',')[1] } };
   } catch { return null; }
 }
@@ -530,27 +620,61 @@ export function massExtents(masses) {
   return `Measured: the composition is ${w.toFixed(1)} m wide, ${d.toFixed(1)} m deep, ${top.toFixed(1)} m to the top, ${masses.length} volumes.`;
 }
 
+const CAMERA_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    yawDeg: { type: 'number', minimum: -180, maximum: 180 },
+    pitchDeg: { type: 'number', minimum: 4, maximum: 60 },
+    fovDeg: { type: 'number', minimum: 20, maximum: 65 },
+  },
+  required: ['yawDeg', 'pitchDeg', 'fovDeg'],
+};
+
+export const MASS_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    id: { type: 'string', minLength: 1, maxLength: 32 },
+    kind: { type: 'string', enum: ['volume', 'slab', 'member'] },
+    role: { type: 'string', enum: ['volume', 'podium', 'bar', 'wing', 'core', 'slab', 'canopy', 'roof', 'balcony', 'frame', 'beam', 'column', 'post', 'screen', 'railing'] },
+    w: { type: 'number', minimum: 0.08, maximum: 120 },
+    d: { type: 'number', minimum: 0.08, maximum: 120 },
+    h: { type: 'number', minimum: 0.08, maximum: 240 },
+    x: { type: 'number', minimum: -90, maximum: 90 },
+    y: { type: 'number', minimum: 0, maximum: 120 },
+    z: { type: 'number', minimum: -90, maximum: 90 },
+    rotY: { type: 'number', minimum: -90, maximum: 90 },
+    facade: { type: 'string', enum: ['slats-v', 'slats-h', 'glass', 'solid'] },
+    cantilever: { type: 'boolean' },
+    on: { type: 'string', description: 'ground or the exact id of the supporting element' },
+    flush: { type: 'array', maxItems: 4, items: { type: 'string', description: 'front|back|left|right|top|center-x|center-z:<id>' } },
+    partOf: { type: ['string', 'null'] },
+    storeys: { type: ['integer', 'null'], minimum: 1, maximum: 80 },
+    level: { type: ['integer', 'null'], minimum: 0, maximum: 80 },
+  },
+  required: ['id', 'kind', 'role', 'w', 'd', 'h', 'x', 'y', 'z', 'rotY', 'facade', 'cantilever', 'on', 'flush', 'partOf', 'storeys', 'level'],
+};
+
+const SCENE_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    masses: { type: 'array', minItems: 1, maxItems: 32, items: MASS_SCHEMA },
+    camera: CAMERA_SCHEMA,
+  }, required: ['masses', 'camera'],
+};
+
 export const BUILDER_TOOLS = [
   { name: 'set_scene',
-    description: 'Replace the whole composition with these boxes. Use once, for the first draft. Include the camera matching the sketch viewpoint.',
-    input_schema: { type: 'object', properties: {
-      masses: { type: 'array', items: { type: 'object' } },
-      camera: { type: 'object', properties: { yawDeg: { type: 'number' }, pitchDeg: { type: 'number' } } },
-    }, required: ['masses'] } },
-  { name: 'update_scene',
-    description: 'Correct the composition in place after looking. edit sets fields on volumes by id; add appends new boxes; remove deletes by id. Also accepts camera.',
-    input_schema: { type: 'object', properties: {
-      edit: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, set: { type: 'object' } }, required: ['id', 'set'] } },
-      add: { type: 'array', items: { type: 'object' } },
-      remove: { type: 'array', items: { type: 'string' } },
-      camera: { type: 'object' },
-    } } },
+    description: 'Submit the complete first scene from the locked visual audit. Every elevated element must name its supporting parent in on.',
+    input_schema: SCENE_SCHEMA },
+  { name: 'replace_scene',
+    description: 'After looking, replace the complete scene with a corrected full array. Preserve unchanged elements byte-for-byte.',
+    input_schema: SCENE_SCHEMA },
   { name: 'look',
-    description: 'Render the current model from the declared camera and see the picture. Use after every set_scene or update_scene.',
-    input_schema: { type: 'object', properties: {} } },
+    description: 'Render the current model from the declared camera and see the picture. Use after every set_scene or replace_scene.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {} } },
   { name: 'finish',
     description: 'The model is a faithful replica of the input image, massing and details both. Hand the reading over.',
-    input_schema: { type: 'object', properties: {
+    input_schema: { type: 'object', additionalProperties: false, properties: {
       reading: { type: 'string' }, type: { type: 'string' }, floorsHint: { type: 'number' },
       envelope: { type: 'object', properties: { w: { type: 'number' }, d: { type: 'number' }, h: { type: 'number' } } },
     }, required: ['reading'] } },
@@ -559,21 +683,21 @@ export const BUILDER_TOOLS = [
 export const BUILDER_BRIEF = `You are driving Rhino-style parametric modelling to REPLICATE the building in the input image, accurately - a faithful reconstruction, not a loose interpretation. Consistency is the whole job, at both levels: the main massing (how many volumes, how they stack, shift and cantilever) and the details (every secondary box, canopy, loggia, opening, setback and frame the image shows). Nothing the image shows may be missing; nothing it does not show may be invented. Work the way a modeller drives a CAD program: place, look, correct.
 
 WORKFLOW - follow it exactly:
-1. set_scene with your full first draft: every box, and the camera matching the sketch viewpoint.
-2. look.
-3. Compare the render with the sketch volume by volume: what sits where, what is flush with what, what cantilevers, proportions against countable storeys, camera angle.
-4. update_scene with corrections. Then look again.
-5. At most 3 looks. When the render reads as the same building, finish.
+1. Read the supplied LOCKED VISUAL AUDIT. It is an inventory, not optional inspiration. Preserve every level and must-preserve feature it lists.
+2. set_scene with the complete first scene and matching camera.
+3. look. Compare the isolated clay model with the reference level-by-level, bottom to top.
+4. replace_scene with the COMPLETE corrected scene. Then look again. Never patch a few fields and forget the support chain.
+5. You must look at least twice. Use a third look if silhouette, openings, or viewpoint still differ. Only then finish.
 
-RULES OF THE WORLD. Metres; y up, ground y=0; the front facade faces +z (toward the viewer); x right, z toward viewer; a box occupies x±w/2, z±d/2, y to y+h. Boxes: {id, role: tower|bar|podium|canopy|wing|core|volume, w,d,h, x,y,z, rotY, facade: slats-v|slats-h|glass|solid, cantilever, on: "ground"|"<id>", flush: ["front|back|left|right|top:<id>"], storeys}. Max 10 boxes. Touching volumes share coordinates exactly: B on A means B.y = A.y+A.h; flush faces share the plane; an opening through a volume is two legs plus a lintel. Nothing floats unless drawn cantilevered.
+RULES OF THE WORLD. Metres; y up, ground y=0; the front facade faces +z (toward the viewer); x right, z toward viewer; a box occupies x±w/2, z±d/2, y to y+h. Use up to 32 elements. kind=volume for occupied masses, slab for plates, member for beams/posts/frames. Touching elements share coordinates exactly: B on A means B.y=A.y+A.h. Every elevated element, including a cantilever, MUST name the real supporting parent in on. Use flush constraints for shared face or centre planes. Nothing may float.
 
 SIZE. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5. h = storeys × that. State sizes a real building would have: house 6-11 m tall, villa or gallery 7-14, office block 12-35, tower 60-300.
 
 CAMERA. yawDeg 0 faces the front facade, positive walks right (front+right two-point perspective ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35).
 
-OPENINGS. A loggia, porch, portal or roofless frame is never a solid box. Build it open, from thin members 0.3-0.6 m thick: two legs and a lintel for a portal, an L or U of slabs for a loggia, four bars for a roofless frame. If the drawing shows daylight through it, the model must show daylight through it.
+OPENINGS. A loggia, porch, portal or roofless frame is never a solid box. Build it open from kind=member elements 0.15-0.6 m thick: two posts and a beam for a portal, an L or U of slabs for a loggia, four members for a roofless frame. If the drawing shows daylight through it, the model must show daylight through it. Do not fill negative space with an occupied volume.
 
-When you look: judge RELATIONS first (what should touch, align, overhang), then proportions against countable storeys, then openings (holes the drawing shows that the model lacks), then camera. Fix what is wrong, not what is merely different in style - the render is deliberately plain boxes.`;
+When you look: judge CAMERA and frame first, then the number and order of LEVELS, then SUPPORT RELATIONS, proportions, and openings. Ignore materials and scenery. Fix what is wrong, not what is merely different in style - the render is deliberately plain boxes.`;
 
 export async function agentBuildMasses(dataURL, cfg, io) {
   if (!cfg.anthropicKey) return null;
@@ -616,19 +740,9 @@ export async function agentBuildMasses(dataURL, cfg, io) {
           content: masses
             ? 'Scene set: ' + masses.length + ' volumes. ' + massExtents(masses) + ' Audit the boxes against your own prose - every storey count and dimension you stated must actually appear - then look.'
             : 'No usable boxes in that input.' });
-      } else if (call.name === 'update_scene') {
-        if (masses) {
-          const byId = new Map(masses.map(m => [m.id, m]));
-          for (const e of call.input.edit || []) {
-            const m = byId.get(e.id);
-            if (m && e.set) Object.assign(m, e.set);
-          }
-          for (const id of call.input.remove || []) {
-            const i = masses.findIndex(m => m.id === id);
-            if (i >= 0) masses.splice(i, 1);
-          }
-          for (const a of call.input.add || []) masses.push(a);
-          masses = sanitizeMasses(masses) || masses;
+      } else if (call.name === 'replace_scene') {
+        if (call.input.masses) {
+          masses = sanitizeMasses(call.input.masses) || masses;
           if (call.input.camera) camera = call.input.camera;
           io.step?.('Claude corrected the composition…');
           await io.apply(masses, camera);
@@ -704,7 +818,7 @@ Then output ONLY this JSON, nothing after it:
  "camera":{"yawDeg":-180..180,"pitchDeg":4..60},
  "floorsHint":int|null,"type":"office|laboratory|residential|hotel|school"|null}
 
-Max 10 boxes. h = storeys × the storey height you chose in stage 2, wherever storeys were counted. camera = the sketch's viewpoint: yawDeg 0 faces the front (+z) facade; positive yaw walks around to the right (two-point perspective showing front+right ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35). Ignore ground lines, hatching, people, trees.` },
+Max 32 elements. Use thin beam/post elements for openings instead of filling them. h = storeys × the storey height you chose in stage 2, wherever storeys were counted. camera = the sketch's viewpoint: yawDeg 0 faces the front (+z) facade; positive yaw walks around to the right (two-point perspective showing front+right ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35). Ignore ground lines, hatching, people, trees.` },
         ],
       }],
     }, 'vision');

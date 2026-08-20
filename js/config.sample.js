@@ -8,6 +8,8 @@
 // silhouette engine and renders fall back to local stylisation.
 window.NAPKIN_CONFIG = {
   openaiKey: '',        // ChatGPT builder engine (optional)
+  openaiModel: 'gpt-5.6-terra',
+  openaiReasoning: 'high',
   anthropicKey: "",
   anthropicModel: "claude-sonnet-5",
   geminiKey: "",
