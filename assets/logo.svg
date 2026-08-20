@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="549" height="505" viewBox="0 0 549 505">
+  <defs>
+    <!-- Main napkin diamond -->
+    <clipPath id="napkinClip">
+      <rect x="124.5" y="92" width="304" height="304" rx="12" ry="12"
+            transform="rotate(45 276.5 244)"/>
+    </clipPath>
+  </defs>
+
+  <!-- Beige napkin -->
+  <rect x="124.5" y="92" width="304" height="304" rx="12" ry="12"
+        transform="rotate(45 276.5 244)"
+        fill="#C8B39C"/>
+
+  <!-- Two full-width crossed stripe pairs -->
+  <g clip-path="url(#napkinClip)"
+     fill="none"
+     stroke="#FFFFFF"
+     stroke-width="10"
+     stroke-linecap="butt">
+
+    <!-- descending left-to-right pair -->
+    <line x1="40" y1="120" x2="430" y2="510"/>
+    <line x1="56" y1="104" x2="446" y2="494"/>
+
+    <!-- descending right-to-left pair -->
+    <line x1="509" y1="120" x2="119" y2="510"/>
+    <line x1="493" y1="104" x2="103" y2="494"/>
+  </g>
+</svg>

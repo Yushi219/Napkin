@@ -269,38 +269,48 @@ export function inkCanvas(size = 220) {
     c.putImageData(img, 0, 0);
   }
   drawStrokes(c, size, true);
-  return off;
+
+  // The reader tests the red channel, and a transparent pixel is 0 — black —
+  // so an erased line came back to it as ink. White the holes back in.
+  return onWhite(off, '#ffffff');
+}
+
+// draw a possibly-holed canvas onto a solid ground of its own size
+function onWhite(src, colour) {
+  const out = document.createElement('canvas');
+  out.width = src.width; out.height = src.height;
+  const c = out.getContext('2d');
+  c.fillStyle = colour;
+  c.fillRect(0, 0, out.width, out.height);
+  c.drawImage(src, 0, 0);
+  return out;
 }
 
 export function thumbnail(size = 128) {
+  return onWhite(layerCanvas(size, 0.85), '#f6f2e8').toDataURL('image/png');
+}
+
+// Photo and ink on a transparent ground. Erasing composites destination-out,
+// so it has to cut through the picture without cutting through the paper —
+// which means the paper cannot be underneath it yet.
+function layerCanvas(size, photoAlpha = 1) {
   const off = document.createElement('canvas');
   off.width = off.height = size;
   const c = off.getContext('2d');
-  c.fillStyle = '#f6f2e8';
-  c.fillRect(0, 0, size, size);
   if (photo) {
     const s = Math.min(size / photo.width, size / photo.height);
-    c.globalAlpha = 0.85;
+    c.globalAlpha = photoAlpha;
     c.drawImage(photo, (size - photo.width * s) / 2, (size - photo.height * s) / 2, photo.width * s, photo.height * s);
     c.globalAlpha = 1;
   }
   drawStrokes(c, size);
-  return off.toDataURL('image/png');
+  return off;
 }
 
 // High-res composite (photo + strokes) — what the AI interpreter actually reads.
+// JPEG carries no alpha, so an erased hole would have arrived as solid black.
 export function sketchDataURL(size = 640) {
-  const off = document.createElement('canvas');
-  off.width = off.height = size;
-  const c = off.getContext('2d');
-  c.fillStyle = '#faf8f2';
-  c.fillRect(0, 0, size, size);
-  if (photo) {
-    const s = Math.min(size / photo.width, size / photo.height);
-    c.drawImage(photo, (size - photo.width * s) / 2, (size - photo.height * s) / 2, photo.width * s, photo.height * s);
-  }
-  drawStrokes(c, size);
-  return off.toDataURL('image/jpeg', 0.88);
+  return onWhite(layerCanvas(size), '#faf8f2').toDataURL('image/jpeg', 0.88);
 }
 
 export function photoDataURL(max = 800) {

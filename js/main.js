@@ -1,6 +1,6 @@
 // Orchestration: landing → workspace, sketch → parameters → model → metrics → render.
 import * as sketch from './sketch.js';
-import { interpretViews, interpretMassing, visionMasses, visionAnnotatedEdit, visionRefine, imageInkCanvas } from './interpret.js';
+import { interpretViews, interpretMassing, visionMasses, agentBuildMasses, visionAnnotatedEdit, visionRefine, imageInkCanvas } from './interpret.js';
 import * as model from './model.js';
 import { compute, TYPES } from './metrics.js';
 import { renderImage, hasGemini, conceptModelImage, writeRenderPrompt } from './render.js';
@@ -249,6 +249,17 @@ function readFailure(e) {
 async function build() {
   if (!sketch.hasInk()) { ui.toast('Draw something first — even a rectangle is a building.'); return; }
   enterWorkspace();
+  // The passes take real seconds. Without something turning in the middle of
+  // the model there is no way to tell working from finished.
+  ui.veil(true, 'reading your sketch…');
+  try {
+    await buildPasses();
+  } finally {
+    ui.veil(false);
+  }
+}
+
+async function buildPasses() {
 
   let patch = null, reading = '';
   if (hasClaude()) {
@@ -260,6 +271,7 @@ async function build() {
     let readShot = lastSketchShot;
     if (hasGemini()) {
       const cbusy = ui.addChatMsg('ai', 'Pass 1 — redrawing your sketch as a clean massing model…', 'busy');
+      ui.veil(true, 'pass 1 — redrawing the sketch…');
       try {
         const m0 = compute(customTypeText);
         const concept = await conceptModelImage({ sketchDataURL: lastSketchShot, typeLabel: m0.type.label });
@@ -277,9 +289,32 @@ async function build() {
       }
     }
 
-    const busy = ui.addChatMsg('ai', 'Pass 2 — reading volumes, storeys and relations…', 'busy');
+    const busy = ui.addChatMsg('ai', 'Pass 2 — Claude is building it: place, look, correct…', 'busy');
+    ui.veil(true, 'pass 2 — building: place, look, correct…');
+    let agentRan = false;
     try {
-      const v = await visionMasses(readShot, anthropicCfg());
+      // The builder loop drives the live scene the way an agent drives a CAD
+      // program: draft, render, compare with the sketch, revise. Every error
+      // it makes is one it gets to see. Falls back to the one-shot reading.
+      let v;
+      try {
+        v = await agentBuildMasses(readShot, anthropicCfg(), {
+          apply: async (masses, camera) => {
+            leaveImported();
+            model.applyPatch({ archetype: null, masses, profile: null, profileSide: null, footprint: null, segments: [], mode: 'massing' });
+            refresh();
+            if (camera) model.setCameraAngle(camera.yawDeg, camera.pitchDeg);
+            await new Promise(r => setTimeout(r, 120));   // one painted frame
+          },
+          snapshot: () => model.modelSnapshot(1100),
+          step: label => { ui.veil(true, label); busy.textContent = label; },
+        });
+        agentRan = true;
+      } catch (agentErr) {
+        console.warn('builder loop fell back to one-shot read', agentErr);
+        ui.veil(true, 'pass 2 — reading volumes and storeys…');
+        v = await visionMasses(readShot, anthropicCfg());
+      }
       busy.remove();
       patch = {
         archetype: null, masses: v.masses, reading: v.reading,
@@ -290,6 +325,7 @@ async function build() {
         $('type-select').value = v.type;
       }
       reading = v.reading;
+      agentRanOnLastBuild = agentRan;
       if (v.camera) pendingCamera = v.camera;
     } catch (e) {
       console.warn('vision read failed → local reader', e);
@@ -316,9 +352,12 @@ async function build() {
   if (deviceKind() === 'phone') showPane('model');
   saveToGallery();
   if (reading) ui.addChatMsg('ai', `“${reading}”`);
-  // research-backed: one automatic render-compare-correct pass lifts fidelity most
-  if (patch.masses && hasClaude() && lastSketchShot) await runRefine(true);
+  // The builder loop already looked at itself; only the one-shot fallback
+  // still benefits from an automatic render-compare-correct pass.
+  if (patch.masses && hasClaude() && lastSketchShot && !agentRanOnLastBuild) await runRefine(true);
 }
+
+let agentRanOnLastBuild = false;
 let pendingCamera = null;
 let lastCamera = null;
 let lastSketchShot = null;
@@ -331,6 +370,7 @@ async function runRefine(auto = false) {
   if (!hasClaude() || !lastSketchShot) { if (!auto) ui.addChatMsg('ai', 'Refine needs the sketch and an Anthropic key.', 'err'); return; }
   const busy = ui.addChatMsg('ai', auto ? 'Self-check: comparing the model against your sketch…' : 'Comparing the model against your sketch…', 'busy');
   if ($('btn-refine')) $('btn-refine').disabled = true;
+  ui.veil(true, 'checking the model against your sketch…');
   try {
     if (lastCamera) model.setCameraAngle(lastCamera.yawDeg, lastCamera.pitchDeg);
     const shot = model.modelSnapshot();
@@ -348,6 +388,7 @@ async function runRefine(auto = false) {
     busy.className = 'cmsg ai err';
     busy.textContent = `Refine failed: ${String(e.message).slice(0, 80)}`;
   } finally {
+    ui.veil(false);
     if ($('btn-refine')) $('btn-refine').disabled = false;
   }
 }
@@ -643,6 +684,7 @@ async function onChat() {
   input.value = '';
   input.classList.add('thinking');
   input.placeholder = 'thinking…';
+  ui.veil(true, 'working on the building…');
   try {
     // red-pen annotation + note → vision edit of the composition
     if (annotationActive()) {
@@ -692,6 +734,7 @@ async function onChat() {
     busy.classList.remove('busy');
     busy.textContent = reply;
   } finally {
+    ui.veil(false);
     input.classList.remove('thinking');
     input.placeholder = 'Talk to the building — “three floors taller”, “twist it 15 degrees”, “make it a library”…';
     input.focus();
@@ -787,11 +830,30 @@ function wire() {
     sketch.undo();
     if (built) { leaveImported(); refresh({ reinterpret: !hasClaude() }); }
   });
+  // Screwing up a bad sketch and lobbing it is what this button means, so it
+  // does that: crumple, throw, and a clean one floats up. The ink is cleared
+  // while the ball is off-screen, so the new napkin arrives already blank.
+  let binning = false;
   $('tool-clear').addEventListener('click', () => {
-    sketch.clearAll();
-    setTool('pen');
-    $('concept-pane').classList.add('hidden');
-    ui.toast('Fresh napkin.');
+    if (binning) return;
+    const nap = $('napkin');
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (still || !nap) {
+      sketch.clearAll(); setTool('pen');
+      $('concept-pane').classList.add('hidden');
+      ui.toast('Fresh napkin.');
+      return;
+    }
+    binning = true;
+    nap.classList.add('crumpling');
+    setTimeout(() => {
+      sketch.clearAll();
+      setTool('pen');
+      $('concept-pane').classList.add('hidden');
+      nap.classList.remove('crumpling');
+      nap.classList.add('arriving');
+      setTimeout(() => { nap.classList.remove('arriving'); binning = false; }, 540);
+    }, 820);
   });
 
   $('photo-input').addEventListener('change', async e => {

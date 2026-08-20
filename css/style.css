@@ -832,11 +832,18 @@ body.has-pen #napkin-hint::after {
 
 /* ---- home button ---- */
 #btn-home {
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--panel); border: 1px solid var(--line); color: var(--ink-soft);
-  font-size: 15px; line-height: 1; cursor: pointer; transition: all .15s; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: 50%; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  cursor: pointer; flex-shrink: 0;
+  transition: background .16s, border-color .16s, color .16s, transform .16s;
 }
-#btn-home:hover { border-color: var(--accent); color: var(--accent); transform: translateX(-2px); }
+#btn-home .ico { width: 15px; height: 15px; }
+#btn-home:hover {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  transform: translateX(-2px);
+}
+#btn-home:active { transform: translateX(-2px) scale(.94); }
 
 /* ---- site bar: bottom-left, single line ---- */
 #site-bar {
@@ -1166,15 +1173,14 @@ body.workspace .splitter#split-rail { display: none; }
    only ever gives that API to a <video>. The API is still asked for where it
    exists, to drop the browser chrome as well. */
 #btn-fs {
-  position: absolute; top: 10px; right: 10px; z-index: 12;
-  width: 32px; height: 32px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); border-radius: 10px;
-  background: #fffdf8d9; backdrop-filter: blur(8px);
-  color: var(--ink); cursor: pointer;
+  width: 28px; height: 28px; padding: 0; margin-left: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: all .15s; flex: 0 0 auto;
 }
-#btn-fs:hover { background: #fffdf8; }
-#btn-fs svg { width: 15px; height: 15px; display: block; }
+#btn-fs:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+#btn-fs svg { width: 14px; height: 14px; display: block; }
 #btn-fs .fs-out { display: none; }
 body.fs #btn-fs .fs-out { display: block; }
 body.fs #btn-fs .fs-in { display: none; }
@@ -1185,9 +1191,20 @@ body.fs #viewport {
   padding: 0;
 }
 body.fs #vp-frame { width: 100% !important; height: 100% !important; }
-body.fs #dash, body.fs #view-modes, body.fs #phone-bar,
+body.fs #dash, body.fs #phone-bar,
 body.fs #left-col, body.fs #gallery-wrap, body.fs .splitter { display: none !important; }
-body.fs #btn-fs { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
+/* the bar collapses to nothing but the way out */
+body.fs #view-modes {
+  position: fixed; top: 0; right: 0; left: auto; z-index: 210;
+  background: none; border: none; pointer-events: none;
+  padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 0 0;
+}
+body.fs #view-modes > *:not(#btn-fs) { display: none; }
+#view-modes #btn-fs { pointer-events: auto; }
+body.fs #view-modes #btn-fs {
+  width: 34px; height: 34px; margin: 0;
+  background: #fffdf8d9; backdrop-filter: blur(8px); color: var(--ink);
+}
 body.fs #model-badge { bottom: calc(14px + env(safe-area-inset-bottom)); }
 
 /* hand tracking rides in the corner of the fullscreen view */
@@ -1298,3 +1315,49 @@ body.fs #viewport > #cam-pane #cam-hint { border-color: #ffffff1f; color: #b9b3a
 }
 .pg-reset:hover { border-color: var(--accent); color: var(--accent); }
 .pnote { font-family: var(--font-mono); font-size: 10px; color: var(--muted); padding: 2px 2px 0; }
+
+/* ================= The mark ================= */
+#hero {
+  display: grid; grid-template-columns: auto auto;
+  justify-content: center; align-items: center; column-gap: 16px;
+}
+.hero-mark {
+  grid-column: 1; grid-row: 1;
+  width: clamp(38px, 4.6vw, 58px); height: auto; display: block;
+  animation: heroRise .7s cubic-bezier(.2,.7,.3,1) both;
+}
+#hero h1 { grid-column: 2; grid-row: 1; }
+#hero-name { grid-column: 1 / -1; grid-row: 2; }
+
+/* ================= Throwing the napkin away ================= */
+/* Screwing up a bad sketch and lobbing it is the gesture the button stands
+   for, so the button performs it: crumple, throw on an arc, and a clean one
+   floats up. Motion is skipped for anyone who asked for less of it. */
+#napkin { transform-origin: 50% 60%; }
+#napkin.crumpling {
+  animation: crumple .34s cubic-bezier(.5,-0.2,.7,.6) forwards,
+             lob .52s .3s cubic-bezier(.35,.02,.7,.5) forwards;
+}
+#napkin.arriving { animation: freshNapkin .52s cubic-bezier(.2,.8,.3,1) both; }
+
+@keyframes crumple {
+  0%   { border-radius: 3px; filter: none; }
+  55%  { border-radius: 34% 46% 30% 50% / 44% 32% 52% 38%; transform: scale(.62) rotate(-9deg); filter: contrast(1.15) saturate(.85); }
+  100% { border-radius: 46% 38% 52% 34% / 36% 50% 34% 48%; transform: scale(.3) rotate(7deg); filter: contrast(1.25) saturate(.7); }
+}
+/* the arc: rises, then falls away to the right while it spins */
+@keyframes lob {
+  0%   { transform: translate(0, 0) scale(.3) rotate(7deg); opacity: 1; }
+  35%  { transform: translate(26vw, -34vh) scale(.22) rotate(160deg); opacity: 1; }
+  70%  { transform: translate(48vw, -6vh) scale(.16) rotate(330deg); opacity: .85; }
+  100% { transform: translate(64vw, 46vh) scale(.1) rotate(520deg); opacity: 0; }
+}
+@keyframes freshNapkin {
+  0%   { transform: translateY(46%) scale(.86) rotate(-2.5deg); opacity: 0; }
+  60%  { opacity: 1; }
+  78%  { transform: translateY(-2%) scale(1.015) rotate(.6deg); }
+  100% { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #napkin.crumpling, #napkin.arriving { animation: none; }
+}

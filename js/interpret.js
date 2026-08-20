@@ -482,6 +482,144 @@ export function fitToEnvelope(masses, envelope) {
   return masses;
 }
 
+
+// ---------------- the builder loop ----------------
+// What makes an agent driving a CAD program precise is not the model — it is
+// the loop. It places something, LOOKS at the result, and corrects, so every
+// error it makes is one it gets to see. One-shot reading writes numbers blind.
+// This gives Claude the same loop against the live Three.js scene: draft the
+// boxes, render, compare against the sketch, revise, look again, and only then
+// finish. io supplies the scene: apply(masses, camera), snapshot(), step(label).
+
+const BUILDER_TOOLS = [
+  { name: 'set_scene',
+    description: 'Replace the whole composition with these boxes. Use once, for the first draft. Include the camera matching the sketch viewpoint.',
+    input_schema: { type: 'object', properties: {
+      masses: { type: 'array', items: { type: 'object' } },
+      camera: { type: 'object', properties: { yawDeg: { type: 'number' }, pitchDeg: { type: 'number' } } },
+    }, required: ['masses'] } },
+  { name: 'update_scene',
+    description: 'Correct the composition in place after looking. edit sets fields on volumes by id; add appends new boxes; remove deletes by id. Also accepts camera.',
+    input_schema: { type: 'object', properties: {
+      edit: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, set: { type: 'object' } }, required: ['id', 'set'] } },
+      add: { type: 'array', items: { type: 'object' } },
+      remove: { type: 'array', items: { type: 'string' } },
+      camera: { type: 'object' },
+    } } },
+  { name: 'look',
+    description: 'Render the current model from the declared camera and see the picture. Use after every set_scene or update_scene.',
+    input_schema: { type: 'object', properties: {} } },
+  { name: 'finish',
+    description: 'The render matches the sketch. Hand the reading over.',
+    input_schema: { type: 'object', properties: {
+      reading: { type: 'string' }, type: { type: 'string' }, floorsHint: { type: 'number' },
+      envelope: { type: 'object', properties: { w: { type: 'number' }, d: { type: 'number' }, h: { type: 'number' } } },
+    }, required: ['reading'] } },
+];
+
+const BUILDER_BRIEF = `You are rebuilding the massing in this sketch as boxes in a live 3D scene, the way you would drive a CAD program: place, look, correct.
+
+WORKFLOW - follow it exactly:
+1. set_scene with your full first draft: every box, and the camera matching the sketch viewpoint.
+2. look.
+3. Compare the render with the sketch volume by volume: what sits where, what is flush with what, what cantilevers, proportions against countable storeys, camera angle.
+4. update_scene with corrections. Then look again.
+5. At most 3 looks. When the render reads as the same building, finish.
+
+RULES OF THE WORLD. Metres; y up, ground y=0; the front facade faces +z (toward the viewer); x right, z toward viewer; a box occupies x±w/2, z±d/2, y to y+h. Boxes: {id, role: tower|bar|podium|canopy|wing|core|volume, w,d,h, x,y,z, rotY, facade: slats-v|slats-h|glass|solid, cantilever, on: "ground"|"<id>", flush: ["front|back|left|right|top:<id>"], storeys}. Max 10 boxes. Touching volumes share coordinates exactly: B on A means B.y = A.y+A.h; flush faces share the plane; an opening through a volume is two legs plus a lintel. Nothing floats unless drawn cantilevered.
+
+SIZE. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5. h = storeys × that. State sizes a real building would have: house 6-11 m tall, villa or gallery 7-14, office block 12-35, tower 60-300.
+
+CAMERA. yawDeg 0 faces the front facade, positive walks right (front+right two-point perspective ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35).
+
+When you look: judge RELATIONS first (what should touch, align, overhang), then proportions, then camera. Fix what is wrong, not what is merely different in style - the render is deliberately plain boxes.`;
+
+export async function agentBuildMasses(dataURL, cfg, io) {
+  if (!cfg.anthropicKey) return null;
+  const sketchPic = await claudeImage(dataURL);
+  const headers = {
+    'content-type': 'application/json',
+    'x-api-key': cfg.anthropicKey,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  };
+  const messages = [{ role: 'user', content: [
+    sketchPic,
+    { type: 'text', text: BUILDER_BRIEF + '\n\nHere is the sketch. Begin with set_scene.' },
+  ] }];
+
+  let masses = null, camera = null, finished = null, looks = 0;
+
+  for (let turn = 0; turn < 9 && !finished; turn++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers,
+      body: JSON.stringify({ model: cfg.anthropicModel, max_tokens: 5000, tools: BUILDER_TOOLS, messages }),
+    });
+    if (!res.ok) throw await apiError(res, 'builder');
+    const data = await res.json();
+    messages.push({ role: 'assistant', content: data.content });
+    const calls = (data.content || []).filter(b => b.type === 'tool_use');
+    if (!calls.length) break;                       // it stopped talking - take what stands
+
+    const results = [];
+    for (const call of calls) {
+      if (call.name === 'set_scene') {
+        masses = sanitizeMasses(call.input.masses) || masses;
+        if (call.input.camera) camera = call.input.camera;
+        io.step?.('Claude placed ' + (masses?.length || 0) + ' volumes…');
+        if (masses) await io.apply(masses, camera);
+        results.push({ type: 'tool_result', tool_use_id: call.id,
+          content: masses ? 'Scene set: ' + masses.length + ' volumes. look to see it.' : 'No usable boxes in that input.' });
+      } else if (call.name === 'update_scene') {
+        if (masses) {
+          const byId = new Map(masses.map(m => [m.id, m]));
+          for (const e of call.input.edit || []) {
+            const m = byId.get(e.id);
+            if (m && e.set) Object.assign(m, e.set);
+          }
+          for (const id of call.input.remove || []) {
+            const i = masses.findIndex(m => m.id === id);
+            if (i >= 0) masses.splice(i, 1);
+          }
+          for (const a of call.input.add || []) masses.push(a);
+          masses = sanitizeMasses(masses) || masses;
+          if (call.input.camera) camera = call.input.camera;
+          io.step?.('Claude corrected the composition…');
+          await io.apply(masses, camera);
+        }
+        results.push({ type: 'tool_result', tool_use_id: call.id,
+          content: masses ? 'Applied. look to see the result.' : 'There is no scene yet - set_scene first.' });
+      } else if (call.name === 'look') {
+        looks++;
+        io.step?.('Rendering for Claude — look ' + looks + '…');
+        const shot = await io.snapshot();
+        const pic = await claudeImage(shot);
+        results.push({ type: 'tool_result', tool_use_id: call.id, content: [
+          pic,
+          { type: 'text', text: 'Render ' + looks + (looks >= 3
+            ? '. That was your last look - correct anything left and finish.'
+            : '. Compare it with the sketch: relations, proportions, camera.') },
+        ] });
+      } else if (call.name === 'finish') {
+        finished = call.input || {};
+        results.push({ type: 'tool_result', tool_use_id: call.id, content: 'Done.' });
+      } else {
+        results.push({ type: 'tool_result', tool_use_id: call.id, content: 'Unknown tool.' });
+      }
+    }
+    messages.push({ role: 'user', content: results });
+  }
+
+  if (!masses) throw new Error('the builder produced no volumes');
+  masses = fitToEnvelope(masses, finished && finished.envelope);
+  return {
+    masses, camera,
+    reading: (finished && finished.reading) || 'Built by the agent loop.',
+    type: (finished && finished.type) || null,
+    floorsHint: finished && Number.isFinite(+finished.floorsHint) ? +finished.floorsHint : null,
+  };
+}
+
 export async function visionMasses(dataURL, cfg) {
   if (!cfg.anthropicKey) return null;
   const picture = await claudeImage(dataURL);
