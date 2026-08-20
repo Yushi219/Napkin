@@ -42,6 +42,18 @@ const FAST_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
+      // Enumerating before numbering is the cheapest accuracy there is: the
+      // levels list forces a read of the drawing before any box is placed,
+      // and it costs nothing extra - same single call.
+      levels: {
+        type: 'array', minItems: 1,
+        description: 'the storeys/tiers you can see, bottom to top, BEFORE placing any box',
+        items: { type: 'object', properties: {
+          index: { type: 'integer' },
+          description: { type: 'string', description: 'what sits at this level and how it shifts, cantilevers or opens' },
+          heightM: { type: 'number' },
+        }, required: ['index', 'description'] },
+      },
       reading: { type: 'string', description: '<=18 words - the design intent' },
       type: { type: 'string', enum: ['office', 'laboratory', 'residential', 'hotel', 'school'] },
       floorsHint: { type: 'integer' },
@@ -49,11 +61,13 @@ const FAST_TOOL = {
       camera: { type: 'object', properties: { yawDeg: { type: 'number' }, pitchDeg: { type: 'number' }, fovDeg: { type: 'number' } }, required: ['yawDeg', 'pitchDeg'] },
       masses: { type: 'array', items: MASS_SCHEMA },
     },
-    required: ['reading', 'envelope', 'camera', 'masses'],
+    required: ['levels', 'reading', 'envelope', 'camera', 'masses'],
   },
 };
 
-const FAST_BRIEF = `Replicate the building in this drawing as boxes, faithfully — main massing and details both. Read level by level, bottom to top, then return the complete scene in one build_scene call.
+const FAST_BRIEF = `Replicate the building in this drawing as boxes, faithfully — main massing and details both. Fill "levels" FIRST: read the drawing storey by storey, bottom to top, and describe what each level does before you place a single box. Then let the boxes obey that list - every level you named must exist, with the shifts, cantilevers and openings you described. Return it all in one build_scene call.
+
+EVIDENCE. You are given the whole drawing plus enlarged halves. Count storey lines, mullions, slats, railings and doors in the enlargements - a counted line beats an impression. Detail the drawing shows and the boxes lack is the most common failure here: secondary volumes, canopies, recessed voids, open frames.
 
 RULES. Metres; y up, ground y=0; front facade faces +z; x right; a box occupies x±w/2, z±d/2, y to y+h. kind=volume|slab|member; members 0.08-0.6 m thick for posts, beams and frames — an opening or roofless frame is built open, never a filled box. Every elevated element names its true support in "on" (cantilevers included); touching elements share coordinates exactly. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5; h = storeys × that. State the envelope first in your head and make the boxes fill it. Camera: yawDeg 0 faces the front, positive walks right; pitchDeg above horizon.`;
 
@@ -64,12 +78,18 @@ export async function fastBuild(rawTargetURL, io) {
   const hint = io.hints?.inkAspect
     ? ` MEASURED (by code, trust it): the ink silhouette is ${io.hints.inkAspect.toFixed(2)}× as wide as tall — the composition seen from your camera must match.`
     : '';
+  // Same one call, more to look at: the full drawing plus its halves at double
+  // scale, where storey lines and thin members survive the vision grid.
+  const tiles = await zoomTiles(targetURL);
+  const content = [
+    { type: 'text', text: FAST_BRIEF + hint },
+    await claudeImage(targetURL),
+  ];
+  for (const t of tiles) {
+    content.push({ type: 'text', text: t.label }, await claudeImage(t.url));
+  }
   const out = await claudeToolCall({
-    content: [
-      { type: 'text', text: FAST_BRIEF + hint },
-      await claudeImage(targetURL),
-    ],
-    tool: FAST_TOOL, maxTokens: 5000,
+    content, tool: FAST_TOOL, maxTokens: 6000,
   }, 'fast build');
   let masses = sanitizeMasses(out.masses);
   if (!masses) throw new Error('the fast build produced no volumes');

@@ -477,24 +477,32 @@ let conceptURL = null;
 // Fires after the fast lane has already put a model on screen. If the user
 // starts editing meanwhile, their edits win and the correction is dropped.
 function scheduleSelfCheck(targetURL) {
-  const stamp = JSON.stringify(model.state.masses);
   setTimeout(async () => {
-    const note = ui.addChatMsg('ai', 'Self-check — comparing the model against your sketch in the background…', 'busy');
+    const note = ui.addChatMsg('ai', 'Self-check \u2014 comparing the model against your sketch in the background\u2026', 'busy');
+    const io = { snapshot: () => model.modelSnapshot(1000, { isolate: true }) };
+    let applied = 0;
     try {
-      const r = await quickCorrect(targetURL, model.state.masses, lastCamera, {
-        snapshot: () => model.modelSnapshot(1000, { isolate: true }),
-      });
-      if (!r) { note.classList.remove('busy'); note.textContent = '✓ Self-check passed — the model matches the sketch.'; return; }
-      if (JSON.stringify(model.state.masses) !== stamp) {
-        note.classList.remove('busy');
-        note.textContent = 'Self-check found corrections, but you were already editing — kept your version.';
-        return;
+      // Two rounds, because the first correction usually reveals the next one \u2014
+      // and none of this time is waited on: the model is already on screen.
+      for (let round = 1; round <= 2; round++) {
+        const before = JSON.stringify(model.state.masses);
+        const r = await quickCorrect(targetURL, model.state.masses, lastCamera, io);
+        if (!r) break;
+        if (JSON.stringify(model.state.masses) !== before) {
+          note.classList.remove('busy');
+          note.textContent = 'Self-check found more to fix, but you were already editing \u2014 kept your version.';
+          return;
+        }
+        model.applyPatch({ masses: r.masses });
+        if (r.camera) { lastCamera = r.camera; model.setCameraAngle(r.camera.yawDeg, r.camera.pitchDeg, r.camera.fovDeg); model.frameBuilding(1.14); }
+        refresh(); syncParams(); commitVersion(`\u27f2 self-check ${round}`);
+        applied++;
+        note.textContent = `Self-check pass ${round} applied \u2014 looking again\u2026`;
       }
-      model.applyPatch({ masses: r.masses });
-      if (r.camera) { lastCamera = r.camera; model.setCameraAngle(r.camera.yawDeg, r.camera.pitchDeg, r.camera.fovDeg); model.frameBuilding(1.14); }
-      refresh(); syncParams(); commitVersion('⟲ self-check');
       note.classList.remove('busy');
-      note.textContent = '⟲ Self-checked against the sketch and corrected.';
+      note.textContent = applied
+        ? `\u27f2 Self-checked against the sketch \u2014 ${applied} correction${applied > 1 ? 's' : ''} applied.`
+        : '\u2713 Self-check passed \u2014 the model matches the sketch.';
     } catch (e) { note.remove(); }
   }, 400);
 }

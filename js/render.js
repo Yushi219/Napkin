@@ -1,5 +1,5 @@
 import { aiVisionCompat as gptVisionCompat } from './claudecore.js';
-import { hasGPT } from './gptcore.js';
+import { hasAnyAI } from './claudecore.js';
 // Nano Banana Pro (Gemini image) — img2img, following the proven promptitect
 // call pattern: x-goog-api-key header, role-labelled image parts (INPUT IMAGE
 // preserves geometry/camera; references are style-only), responseModalities
@@ -102,7 +102,10 @@ const PROMPT_CATEGORIES = [
 ];
 
 export async function writeRenderPrompt(userLine, ctx) {
-  if (!hasGPT()) return null;
+  // Gated on the wrong key after the engine swap: with only an Anthropic key
+  // this returned null, the tuned brief was never written, and the render fell
+  // back to one canned line - which is exactly when it stops following the view.
+  if (!hasAnyAI()) return null;
   const { text: written } = await gptVisionCompat({
       max_tokens: 900,
       messages: [{
