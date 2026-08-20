@@ -372,9 +372,12 @@ async function buildPasses() {
         snapshot: () => model.modelSnapshot(1100),
         step: label => { ui.veil(true, label); busy.textContent = label; },
       };
+      // the loop compares against the napkin itself; the concept render, when
+      // pass 1 produced one, goes along only as a reading aid
+      io.aidURL = readShot !== lastSketchShot ? readShot : null;
       let v = null, engineUsed = '';
       try {
-        v = await gptBuildMasses(readShot, io); engineUsed = 'ChatGPT'; agentRan = true;
+        v = await gptBuildMasses(lastSketchShot, io); engineUsed = 'ChatGPT'; agentRan = true;
       } catch (agentErr) { console.warn('ChatGPT builder failed', agentErr); }
       if (!v && hasAI()) {
         ui.veil(true, 'pass 2 — reading volumes and storeys…');

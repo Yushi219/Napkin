@@ -23,12 +23,21 @@ export async function gptBuildMasses(dataURL, io) {
   const hint = io.hints?.inkAspect
     ? `\n\nMEASURED FROM THE DRAWING (by code, trust it): the ink silhouette is ${io.hints.inkAspect.toFixed(2)} times as wide as it is tall. From your declared camera the finished composition must fill that same proportion - check it on every look.`
     : '';
+  // The napkin drawing is the authority; the cleaned concept render, when
+  // there is one, rides along as an aid. Chasing the aid instead of the
+  // drawing is how detail quietly went missing.
+  const firstContent = [
+    { type: 'text', text: 'Here is the sketch — the authoritative target. Begin with set_scene.' },
+    { type: 'image_url', image_url: { url: dataURL } },
+  ];
+  if (io.aidURL && io.aidURL !== dataURL) {
+    firstContent.push(
+      { type: 'text', text: 'And a cleaned massing render derived from that sketch, as an aid for reading the volumes. Wherever the two disagree, THE SKETCH WINS.' },
+      { type: 'image_url', image_url: { url: io.aidURL } });
+  }
   const messages = [
     { role: 'system', content: BUILDER_BRIEF + hint },
-    { role: 'user', content: [
-      { type: 'text', text: 'Here is the sketch. Begin with set_scene.' },
-      { type: 'image_url', image_url: { url: dataURL } },
-    ] },
+    { role: 'user', content: firstContent },
   ];
 
   let masses = null, camera = null, finished = null, looks = 0;

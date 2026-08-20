@@ -69,14 +69,14 @@ async function callGemini(model, key, parts) {
 export async function conceptModelImage({ sketchDataURL, typeLabel }) {
   const { key, model } = cfg();
   if (!key) return null;
-  const brief = `Redraw the INPUT sketch as a clean 3D MASSING STUDY MODEL of a ${typeLabel.toLowerCase()}, exactly as an architect would build it in Rhino and screenshot it.
+  const brief = `Rebuild the INPUT sketch as a clean white 3D ARCHITECTURAL MODEL of a ${typeLabel.toLowerCase()} — an exact Rhino replica screenshotted, not a loose study.
 
 Requirements:
-- Keep the EXACT same composition, viewpoint, proportions and volume arrangement as the sketch. This is a clean-up, not a redesign. Every volume in the sketch appears; nothing is added.
-- Render as untextured matte light-grey/white massing volumes with crisp edges, soft studio daylight, subtle contact shadows, on a plain neutral background. No entourage, no trees, no people, no sky, no colour, no materials, no text.
-- Simplify to clean prismatic volumes: flat planes, sharp corners, clear stacking, clear cantilevers, clear openings and voids.
-- Make every volume boundary unambiguous — a reader must be able to count the separate boxes and see which sits on which.
-- Straight-on architectural presentation, orthographic feel, the whole building inside the frame with a small margin.`;
+- REPLICATE, do not redesign and do not simplify. Same composition, same viewpoint and camera angle as the sketch, same proportions, same number of volumes in the same arrangement. Nothing added, nothing dropped.
+- KEEP THE DETAILS: every window band, mullion rhythm, loggia, recessed void, roofless frame, canopy, plinth and setback the sketch shows must appear in the model, in place, at the same size. If the sketch shows daylight through an opening, the model shows daylight through it.
+- Render as a matte white/light-grey museum-board model with crisp edges, soft studio daylight, subtle contact shadows, plain neutral background. No entourage, trees, people, sky, colour, materials or text.
+- Every volume boundary unambiguous — a reader must be able to count the boxes, the storeys, and see which volume sits on or cantilevers past which.
+- Keep the sketch's own viewpoint; the whole building inside the frame with a small margin.`;
   const parts = [
     { text: brief },
     { text: 'INPUT SKETCH: preserve its composition and viewpoint exactly.' },
