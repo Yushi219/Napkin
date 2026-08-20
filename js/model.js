@@ -543,6 +543,7 @@ export function getModelMode() { return modelMode; }
 export function initModel(canvas, onPickMass) {
   pickCb = onPickMass || null;
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  renderer.localClippingEnabled = true;   // the hand-gesture section cuts
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1470,6 +1471,189 @@ let dragState = null;
 const _plane = new THREE.Plane();
 const _hit = new THREE.Vector3();
 
+// ================= Hand-model verbs =================
+// The gestures speak to the model through these three: an exploded axon, a
+// live section cut, and face-level push-pull on the quad cage.
+
+// ---- exploded axonometric ----
+// Two palms spreading apart lift the composition into its layers, the way an
+// exploded axon diagram reads. The offsets are a view transform on the groups;
+// state.masses never changes, so closing the palms restores exactly.
+let explodeT = 0;
+export function setExplode(t) {
+  explodeT = Math.max(0, Math.min(1, +t || 0));
+  applyExplode();
+}
+export function getExplode() { return explodeT; }
+function applyExplode() {
+  if (!state.masses?.length || !massGroups.length) return;
+  const order = state.masses.map((m, i) => ({ i, y: m.y }))
+    .sort((a, b) => a.y - b.y || a.i - b.i);
+  const gap = Math.max(2.5, state.masses.reduce((a, m) => a + m.h, 0) / state.masses.length * 0.9);
+  order.forEach((o, rank) => {
+    const g = massGroups[o.i], m = state.masses[o.i];
+    if (g) g.position.y = m.y + m.h / 2 + rank * gap * explodeT;
+  });
+}
+
+// ---- section cuts ----
+// A chopping palm slides a vertical cut through the building; a palm turned
+// to the sky raises and lowers a horizontal one. Only the building's own
+// materials clip — the city and the ground stay whole.
+let sectionOn = false;
+const _secPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
+function sectionMats() { return [MAT.clay, MAT.band, MAT.fin, MAT.glass]; }
+export function setSection(axis, t01) {
+  if (!towerGroup) return;
+  const box = new THREE.Box3().setFromObject(towerGroup);
+  if (box.isEmpty()) return;
+  const t = Math.max(0, Math.min(1, +t01 || 0));
+  if (axis === 'y') {
+    // hand high = ceiling high (whole building), hand low = cut down to the base
+    const cutY = box.max.y + 0.5 - t * (box.max.y - box.min.y + 1);
+    _secPlane.normal.set(0, -1, 0);
+    _secPlane.constant = cutY;
+  } else {
+    const cutX = box.min.x - 0.5 + t * (box.max.x - box.min.x + 1);
+    _secPlane.normal.set(-1, 0, 0);
+    _secPlane.constant = cutX;
+  }
+  if (!sectionOn) {
+    sectionOn = true;
+    for (const m of sectionMats()) { m.clippingPlanes = [_secPlane]; m.needsUpdate = true; }
+  }
+}
+export function clearSection() {
+  if (!sectionOn) return;
+  sectionOn = false;
+  for (const m of sectionMats()) { m.clippingPlanes = null; m.needsUpdate = true; }
+}
+
+// ---- face aim + push-pull ----
+// Point (thumb and index open) and the face under the cursor lights up;
+// pinch grabs it; moving the hand pushes or pulls that face of the cage —
+// the volume resizes the way clay would; opening the fingers lets go.
+let faceHi = null, faceHover = null, faceDrag = null;
+const _axisVec = new THREE.Vector3();
+
+function pickFaceAt(nx, ny) {
+  if (!state.masses?.length || !towerGroup) return null;
+  _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
+  _ray.setFromCamera(_ndc, camera);
+  const hits = _ray.intersectObjects(towerGroup.children, true);
+  for (const h of hits) {
+    if (!h.face) continue;
+    let o = h.object;
+    while (o && o.userData.massIndex === undefined) o = o.parent;
+    if (!o) continue;
+    const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+    const ax = Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z) ? 'x'
+      : Math.abs(n.y) >= Math.abs(n.z) ? 'y' : 'z';
+    const sign = (ax === 'x' ? n.x : ax === 'y' ? n.y : n.z) >= 0 ? 1 : -1;
+    return { i: o.userData.massIndex, axis: ax, sign, point: h.point.clone() };
+  }
+  return null;
+}
+
+function faceHiMesh() {
+  if (faceHi) return faceHi;
+  faceHi = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0xbd5f3d, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  faceHi.visible = false;
+  scene.add(faceHi);
+  return faceHi;
+}
+
+function placeFaceHi(m, axis, sign) {
+  const hi = faceHiMesh();
+  const cy = m.y + m.h / 2;
+  hi.rotation.set(0, 0, 0);
+  if (axis === 'x') {
+    hi.scale.set(m.d, m.h, 1);
+    hi.rotation.y = sign > 0 ? Math.PI / 2 : -Math.PI / 2;
+    hi.position.set(m.x + sign * (m.w / 2 + 0.07), cy, m.z);
+  } else if (axis === 'z') {
+    hi.scale.set(m.w, m.h, 1);
+    hi.rotation.y = sign > 0 ? 0 : Math.PI;
+    hi.position.set(m.x, cy, m.z + sign * (m.d / 2 + 0.07));
+  } else {
+    hi.scale.set(m.w, m.d, 1);
+    hi.rotation.x = sign > 0 ? -Math.PI / 2 : Math.PI / 2;
+    hi.position.set(m.x, m.y + (sign > 0 ? m.h + 0.07 : -0.07), m.z);
+  }
+  hi.visible = true;
+}
+
+export function hoverFace(nx, ny) {
+  const hit = pickFaceAt(nx, ny);
+  if (!hit) { clearFaceHover(); return false; }
+  faceHover = hit;
+  placeFaceHi(state.masses[hit.i], hit.axis, hit.sign);
+  return true;
+}
+export function clearFaceHover() {
+  faceHover = null;
+  if (faceHi) faceHi.visible = false;
+}
+
+export function beginFaceDrag(nx, ny) {
+  const hit = faceHover || pickFaceAt(nx, ny);
+  if (!hit) return false;
+  const m = state.masses[hit.i];
+  _axisVec.set(hit.axis === 'x' ? 1 : 0, hit.axis === 'y' ? 1 : 0, hit.axis === 'z' ? 1 : 0);
+  // the drag reads along the face's axis, measured on the view plane through the grab point
+  _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
+  _ray.setFromCamera(_ndc, camera);
+  const camDir = camera.getWorldDirection(new THREE.Vector3());
+  _plane.setFromNormalAndCoplanarPoint(camDir, hit.point);
+  if (!_ray.ray.intersectPlane(_plane, _hit)) return false;
+  faceDrag = { ...hit, start: _hit.clone(), m0: { w: m.w, d: m.d, h: m.h, x: m.x, y: m.y, z: m.z } };
+  controls.enabled = false;
+  placeFaceHi(m, hit.axis, hit.sign);
+  return true;
+}
+
+export function moveFaceDrag(nx, ny) {
+  if (!faceDrag) return;
+  _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
+  _ray.setFromCamera(_ndc, camera);
+  if (!_ray.ray.intersectPlane(_plane, _hit)) return;
+  const d = _hit.clone().sub(faceDrag.start).dot(_axisVec);
+  const m = state.masses[faceDrag.i], m0 = faceDrag.m0;
+  const r2 = v => Math.round(v * 100) / 100;
+  if (faceDrag.axis === 'x') {
+    m.w = r2(Math.max(0.1, m0.w + d * faceDrag.sign));
+    m.x = r2(m0.x + d / 2);
+  } else if (faceDrag.axis === 'z') {
+    m.d = r2(Math.max(0.1, m0.d + d * faceDrag.sign));
+    m.z = r2(m0.z + d / 2);
+  } else if (faceDrag.sign > 0) {
+    m.h = r2(Math.max(0.1, m0.h + d));
+  } else {
+    const top = m0.y + m0.h;
+    m.y = r2(Math.max(0, Math.min(top - 0.1, m0.y + d)));
+    m.h = r2(top - m.y);
+  }
+  // cheap live feedback: scale the group; the true rebuild lands on release
+  const g = massGroups[faceDrag.i];
+  if (g) {
+    g.scale.set(m.w / m0.w, m.h / m0.h, m.d / m0.d);
+    g.position.set(m.x, m.y + m.h / 2, m.z);
+  }
+  placeFaceHi(m, faceDrag.axis, faceDrag.sign);
+}
+
+export function endFaceDrag() {
+  if (!faceDrag) return null;
+  const i = faceDrag.i;
+  faceDrag = null;
+  controls.enabled = true;
+  clearFaceHover();
+  rebuild();
+  return i;
+}
+
 export function pickAt(nx, ny) {
   if (!state.masses?.length || !towerGroup) return null;
   _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
@@ -1815,6 +1999,7 @@ function rebuildSolid() {
   if (state.masses?.length) {
     buildMasses();
     scene.add(towerGroup);
+    applyExplode();
     const st = towerStats();
     controls.target.lerp(new THREE.Vector3(0, st.height * 0.38, 0), 1);
     rebuildWireMasses();

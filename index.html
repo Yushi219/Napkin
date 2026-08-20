@@ -13,32 +13,32 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@500;600&family=Great+Vibes&family=Pinyon+Script&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=20260820r" />
+<link rel="stylesheet" href="css/style.css?v=20260820t" />
 <script type="importmap">
 {
   "imports": {
     "three": "./js/vendor/three.module.js",
     "three/addons/": "./js/vendor/addons/",
-    "./js/chat.js": "./js/chat.js?v=20260820r",
-    "./js/device.js": "./js/device.js?v=20260820r",
-    "./js/examples.js": "./js/examples.js?v=20260820r",
-    "./js/gallery.js": "./js/gallery.js?v=20260820r",
-    "./js/hands.js": "./js/hands.js?v=20260820r",
-    "./js/interpret.js": "./js/interpret.js?v=20260820r",
-    "./js/main.js": "./js/main.js?v=20260820r",
-    "./js/metrics.js": "./js/metrics.js?v=20260820r",
-    "./js/model.js": "./js/model.js?v=20260820r",
-    "./js/claudecore.js": "./js/claudecore.js?v=20260820r",
-    "./js/builder.js": "./js/builder.js?v=20260820r",
-    "./js/gptcore.js": "./js/gptcore.js?v=20260820r",
-    "./js/openai.js": "./js/openai.js?v=20260820r",
-    "./js/render.js": "./js/render.js?v=20260820r",
-    "./js/sketch.js": "./js/sketch.js?v=20260820r",
-    "./js/solar.js": "./js/solar.js?v=20260820r",
-    "./js/splitters.js": "./js/splitters.js?v=20260820r",
-    "./js/tower.js": "./js/tower.js?v=20260820r",
-    "./js/ui.js": "./js/ui.js?v=20260820r",
-    "./js/versions.js": "./js/versions.js?v=20260820r"
+    "./js/chat.js": "./js/chat.js?v=20260820t",
+    "./js/device.js": "./js/device.js?v=20260820t",
+    "./js/examples.js": "./js/examples.js?v=20260820t",
+    "./js/gallery.js": "./js/gallery.js?v=20260820t",
+    "./js/hands.js": "./js/hands.js?v=20260820t",
+    "./js/interpret.js": "./js/interpret.js?v=20260820t",
+    "./js/main.js": "./js/main.js?v=20260820t",
+    "./js/metrics.js": "./js/metrics.js?v=20260820t",
+    "./js/model.js": "./js/model.js?v=20260820t",
+    "./js/claudecore.js": "./js/claudecore.js?v=20260820t",
+    "./js/builder.js": "./js/builder.js?v=20260820t",
+    "./js/gptcore.js": "./js/gptcore.js?v=20260820t",
+    "./js/openai.js": "./js/openai.js?v=20260820t",
+    "./js/render.js": "./js/render.js?v=20260820t",
+    "./js/sketch.js": "./js/sketch.js?v=20260820t",
+    "./js/solar.js": "./js/solar.js?v=20260820t",
+    "./js/splitters.js": "./js/splitters.js?v=20260820t",
+    "./js/tower.js": "./js/tower.js?v=20260820t",
+    "./js/ui.js": "./js/ui.js?v=20260820t",
+    "./js/versions.js": "./js/versions.js?v=20260820t"
   }
 }
 </script>
@@ -138,10 +138,11 @@ if (location.protocol === 'file:') {
         <span class="pane-tag">hand tracking</span>
         <canvas id="cam-canvas" width="320" height="240"></canvas>
         <div id="cam-legend">
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 11V5.4a1.35 1.35 0 0 1 2.7 0V10"/><path d="M11.2 10V4.2a1.35 1.35 0 0 1 2.7 0V10"/><path d="M13.9 10.6V6a1.35 1.35 0 0 1 2.7 0v7"/><path d="M8.5 11 6.4 13a1.9 1.9 0 0 0-.2 2.5l2.1 3a4.8 4.8 0 0 0 3.9 2h1.4a3.5 3.5 0 0 0 3.5-3.5V13"/></svg><b>Open palm</b> orbit</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 6.5 11 10.2"/><path d="M16.5 6.5 13 10.2"/><circle cx="12" cy="12.2" r="1.9"/><path d="M7.6 14.6a4.9 4.9 0 0 0 8.8 0"/></svg><b>Pinch</b> grab a volume</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 11V5.4a1.35 1.35 0 0 1 2.7 0V10"/><path d="M11.2 10V4.2a1.35 1.35 0 0 1 2.7 0V10"/><path d="M13.9 10.6V6a1.35 1.35 0 0 1 2.7 0v7"/><path d="M8.5 11 6.4 13a1.9 1.9 0 0 0-.2 2.5l2.1 3a4.8 4.8 0 0 0 3.9 2h1.4a3.5 3.5 0 0 0 3.5-3.5V13"/></svg><b>Open palm</b> orbit · hold still to re-frame</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v17"/><path d="M6 7.5h12M6 12h12M6 16.5h12"/></svg><b>Chop, slide</b> section cut · <b>palm up</b> cuts the top</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12H3.5M20.5 12H17"/><path d="M5.5 9.5 3.5 12l2 2.5M18.5 9.5l2 2.5-2 2.5"/><rect x="9.2" y="9.2" width="5.6" height="5.6" rx="1"/></svg><b>Two palms apart</b> exploded axon</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 6.5 11 10.2"/><path d="M16.5 6.5 13 10.2"/><circle cx="12" cy="12.2" r="1.9"/><path d="M7.6 14.6a4.9 4.9 0 0 0 8.8 0"/></svg><b>Point</b> aim a face · <b>pinch</b> pull it</span>
           <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.6" y="8.4" width="12.8" height="9.6" rx="4"/><path d="M9 8.4V6.8a1.5 1.5 0 0 1 3 0v1.6"/><path d="M12 8.4V6.3a1.5 1.5 0 0 1 3 0v2.1"/><path d="M9.2 12.8h5.6"/></svg><b>Fist</b> raise or lower to zoom</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.2"/><path d="M12 7.6v4.6l3 1.8"/></svg><b>Hold still</b> re-frame the building</span>
         </div>
         <div id="cam-hint">Drop your hand out of frame and nothing moves.</div>
       </div>
@@ -270,7 +271,7 @@ if (location.protocol === 'file:') {
 </div>
 <div id="toast"></div>
 
-<script src="js/config.local.js?v=20260820r"></script>
-<script type="module" src="js/main.js?v=20260820r"></script>
+<script src="js/config.local.js?v=20260820t"></script>
+<script type="module" src="js/main.js?v=20260820t"></script>
 </body>
 </html>

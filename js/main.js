@@ -1359,29 +1359,33 @@ function wire() {
       const sizeHand = () => { hc.width = hc.clientWidth * devicePixelRatio; hc.height = hc.clientHeight * devicePixelRatio; };
       sizeHand();
       new ResizeObserver(sizeHand).observe(hc);
-      let grabbed = null;
+      let grabbedFace = false;
       await hands.startHands($('hand-video'), $('cam-canvas'), {
         onCursor: cur => hands.drawCursor(hc, cur),
-        onGestureStart: (g, x, y) => {
-          if (g === 'pinch') grabbed = model.beginDrag(x, y);
-        },
-        onGestureMove: (g, x, y, dx, dy) => {
-          if (g === 'pinch' && grabbed !== null) model.moveDrag(x, y);
-          else if (g === 'open') model.orbitCamera(dx, dy);
-          else if (g === 'fist') model.zoomCamera(1 + dy * 2.2);
-        },
-        onGestureEnd: g => {
-          if (g === 'pinch' && grabbed !== null) {
-            model.endDrag(); refresh(); syncParams(); commitVersion('✋ moved by hand');
-            grabbed = null;
-          }
-        },
+        onOrbit: (dx, dy) => model.orbitCamera(dx, dy),
+        onZoomStep: f => model.zoomCamera(f),
         onHold: () => { model.frameBuilding(); ui.toast('Re-framed.'); },
+        // point = aim at a face; pinch = pull it like clay
+        onHover: (x, y) => model.hoverFace(x, y),
+        onHoverEnd: () => model.clearFaceHover(),
+        onFaceGrab: (x, y) => { grabbedFace = model.beginFaceDrag(x, y); },
+        onFaceDrag: (x, y) => { if (grabbedFace) model.moveFaceDrag(x, y); },
+        onFaceRelease: () => {
+          if (!grabbedFace) return;
+          grabbedFace = false;
+          if (model.endFaceDrag() !== null) { refresh(); syncParams(); commitVersion('✋ face pulled'); }
+        },
+        // a chopping palm sections the model; palm-up cuts the top
+        onSection: (axis, t) => model.setSection(axis, t),
+        onSectionEnd: () => model.clearSection(),
+        // two palms spreading = exploded axon; it holds until closed again
+        onExplode: t => model.setExplode(t),
+        onExplodeEnd: () => {},
       });
       $('cam-pane').classList.remove('hidden');
       placeCamPane();
       busy.classList.remove('busy');
-      busy.textContent = 'Hands on: open palm orbits · pinch grabs a volume · fist rises and falls to zoom · hold an open palm still to re-frame.';
+      busy.textContent = 'Hands on: open palm orbits · chop slides a section · palm-up cuts the top · two palms spread into an exploded axon · point at a face, pinch and pull it · fist zooms.';
     } catch (e) {
       btn.classList.remove('active');
       busy.className = 'cmsg ai err';
