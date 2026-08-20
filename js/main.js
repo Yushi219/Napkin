@@ -5,7 +5,8 @@ import * as model from './model.js';
 import { compute, TYPES } from './metrics.js';
 import { renderImage, hasGemini, conceptModelImage, writeRenderPrompt } from './render.js';
 import * as hands from './hands.js';
-import { SITES, getSite, seasonDate, daylightWindow } from './solar.js';
+import { SITES, getSite, seasonDate, daylightWindow, setCustomSite, clearCustomSite } from './solar.js';
+import * as siteData from './site.js';
 import { initDevice, deviceKind, isTouch, showPane, onDeviceChange } from './device.js';
 import { EXAMPLES, strokesFor } from './examples.js';
 import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './gallery.js';
@@ -956,7 +957,127 @@ function syncSunControls() {
   if ($('sun-readout')) $('sun-readout').textContent = `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+// ---------------- the real site ----------------
+// Search an address, circle the parcel on a real map, and the model world
+// re-anchors: measured neighbours, measured ground, the sky actually over
+// the site, sun geometry at the true latitude. Leaflet arrives lazily.
+
+let leafletReady = null;
+function loadLeaflet() {
+  if (leafletReady) return leafletReady;
+  leafletReady = new Promise((res, rej) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.onload = res; js.onerror = () => rej(new Error('Leaflet failed to load'));
+    document.head.appendChild(js);
+  });
+  return leafletReady;
+}
+
+function applyPinnedSite(site) {
+  model.setRealSiteData(site);
+  setCustomSite(site.lat, site.lon, site.region.label || site.label, site.weather?.utcOffsetHours);
+  if (site.weather?.sky) {
+    model.setWeather(site.weather.sky);
+    $('btn-weather').textContent = model.getWeather().label;
+  }
+  $('btn-landscape').textContent = '📍 ' + (site.region.city || site.region.label || 'site');
+  const chip = $('site-chip');
+  chip.textContent = `📍 ${site.region.label || site.label} · ${site.buildings.length} neighbours · r${site.radius}m` + (site.weather ? ` · ${Math.round(site.weather.tempC)}°C` : '');
+  chip.classList.remove('hidden');
+  localStorage.setItem('napkin_real_site', JSON.stringify(site));
+  refresh();
+  syncSunControls();
+  ui.addChatMsg('ai', `Site pinned: ${site.label.split(',').slice(0, 2).join(',')}. ${site.buildings.length} measured neighbours from OpenStreetMap, ground from real elevations, ${site.weather ? 'live weather: ' + site.weather.sky : 'weather unavailable'}. Sun now runs at ${site.lat.toFixed(3)}, ${site.lon.toFixed(3)}.`);
+}
+
+async function openSitePicker(hit) {
+  try { await loadLeaflet(); } catch (e) { ui.toast('Map library unreachable — pinning the address point directly.'); }
+  const L = window.L;
+  let lat = hit.lat, lon = hit.lon, radius = 220;
+  ui.openModal(`
+    <div class="modal-kicker">Project site</div>
+    <div class="modal-title" style="font-size:18px">${hit.label.split(',').slice(0, 3).join(',')}</div>
+    <div id="site-map"></div>
+    <div class="site-modal-row"><span>Context radius</span>
+      <input id="site-radius" type="range" min="120" max="400" step="20" value="220" />
+      <span id="site-radius-val" class="mono">220 m</span></div>
+    <div class="site-modal-row" style="color:var(--faint)">Click the map to move the parcel centre. Everything inside the ring becomes measured context.</div>
+    <button class="build-btn" id="site-pin" style="width:100%;margin-top:12px">Pin this site →</button>`);
+  let map = null, marker = null, ring = null;
+  if (L) {
+    map = L.map('site-map').setView([lat, lon], 16);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(map);
+    marker = L.marker([lat, lon]).addTo(map);
+    ring = L.circle([lat, lon], { radius, color: '#bd5f3d', weight: 2, fillOpacity: 0.08 }).addTo(map);
+    map.on('click', e => {
+      lat = e.latlng.lat; lon = e.latlng.lng;
+      marker.setLatLng(e.latlng); ring.setLatLng(e.latlng);
+    });
+  }
+  $('site-radius').addEventListener('input', e => {
+    radius = +e.target.value;
+    $('site-radius-val').textContent = radius + ' m';
+    if (ring) ring.setRadius(radius);
+  });
+  $('site-pin').addEventListener('click', async () => {
+    const btn = $('site-pin');
+    btn.disabled = true;
+    btn.textContent = 'Reading the site…';
+    try {
+      const site = await siteData.assembleSite(
+        { lat, lon, radius, label: hit.label, address: hit.address },
+        step => { btn.textContent = step; });
+      ui.closeModal();
+      applyPinnedSite(site);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Pin this site →';
+      ui.toast('Site assembly failed: ' + String(e.message).slice(0, 80));
+    }
+  });
+}
+
+function wireSiteSearch() {
+  const input = $('site-search'), hits = $('site-hits');
+  if (!input) return;
+  let t = 0;
+  const go = async () => {
+    const q = input.value.trim();
+    if (q.length < 3) { hits.classList.add('hidden'); return; }
+    try {
+      const rows = await siteData.searchPlaces(q);
+      hits.innerHTML = rows.length
+        ? rows.map((r, i) => `<button data-i="${i}">${r.label.length > 74 ? r.label.slice(0, 74) + '…' : r.label}</button>`).join('')
+        : '<button disabled>No places found</button>';
+      hits.classList.remove('hidden');
+      hits.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', () => {
+        hits.classList.add('hidden');
+        input.value = rows[+b.dataset.i].label.split(',').slice(0, 2).join(',');
+        openSitePicker(rows[+b.dataset.i]);
+      }));
+    } catch (e) { ui.toast('Place search failed: ' + String(e.message).slice(0, 60)); }
+  };
+  input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(go, 450); });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(t); go(); } });
+  document.addEventListener('pointerdown', e => {
+    if (!e.target.closest('#site-row')) hits.classList.add('hidden');
+  });
+  // a site pinned in an earlier session comes back
+  try {
+    const saved = JSON.parse(localStorage.getItem('napkin_real_site') || 'null');
+    if (saved?.lat) { siteData.setActiveSite(saved); applyPinnedSite(saved); }
+  } catch { /* ignore */ }
+}
+
 function wire() {
+
   // Which machine this is has to be settled first — the frame ratio, the
   // default level of detail and half the layout all branch on it.
   const dev = initDevice();
@@ -1469,9 +1590,12 @@ function wire() {
   onDeviceChange(k => { if (k !== 'phone') document.body.classList.remove('pane-sketch', 'pane-model'); });
 
   // ---- site / time / detail bar (ported from CONCORD) ----
+  wireSiteSearch();
   $('site-select').innerHTML = Object.entries(SITES)
-    .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
-  $('site-select').value = getSite().key;
+    .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')
+    + '<option value="custom">📍 Searched site</option>';
+  const curSite = getSite().key;
+  $('site-select').value = curSite === 'custom' ? 'custom' : curSite;
 
   function applySun(patch) {
     model.setSunTime(patch);
@@ -1479,6 +1603,14 @@ function wire() {
     refresh();                   // metrics follow latitude
   }
   $('site-select').addEventListener('change', e => {
+    if ($('site-select').value === 'custom') { syncSunControls(); return; }
+    if (model.hasRealSite()) {
+      model.clearRealSiteData(); clearCustomSite(); siteData.clearRealSite();
+      localStorage.removeItem('napkin_real_site');
+      $('site-chip')?.classList.add('hidden');
+      $('btn-landscape').textContent = model.getLandscape().label;
+      ui.toast('Back to preset sites — the pinned project site is released.');
+    }
     applySun({ site: e.target.value });
     const s = getSite();
     const w = daylightWindow(model.getSunTime().date);

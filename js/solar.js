@@ -24,9 +24,20 @@ export const SITES = {
 let siteKey = localStorage.getItem('napkin_site') || 'boston';
 if (!SITES[siteKey]) siteKey = 'boston';
 
-export function getSite() { return { key: siteKey, ...SITES[siteKey] }; }
+// A searched address becomes a first-class site: same solar math, real place.
+let customSite = null;
+export function setCustomSite(lat, lon, label, tz) {
+  customSite = { lat: +lat, lon: +lon, tz: Number.isFinite(+tz) ? +tz : Math.round(+lon / 15), label: label || 'Project site', desc: 'Your searched project location' };
+  return getSite();
+}
+export function clearCustomSite() { customSite = null; }
+
+export function getSite() {
+  if (customSite) return { key: 'custom', ...customSite };
+  return { key: siteKey, ...SITES[siteKey] };
+}
 export function setSite(key) {
-  if (SITES[key]) { siteKey = key; localStorage.setItem('napkin_site', key); }
+  if (SITES[key]) { siteKey = key; customSite = null; localStorage.setItem('napkin_site', key); }
   return getSite();
 }
 

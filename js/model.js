@@ -877,6 +877,80 @@ function fabricFor(L) {
   };
 }
 
+// ---- the real site: measured footprints and measured ground ----
+let realSite = null;    // { label, radius, buildings: [{poly,h,name}], terrain }
+export function setRealSiteData(data) {
+  realSite = data;
+  if (scene && contextGroup) rebuildContext();
+}
+export function clearRealSiteData() {
+  realSite = null;
+  if (scene && contextGroup) rebuildContext();
+}
+export function hasRealSite() { return !!realSite; }
+
+function realTerrainAt(x, z) {
+  const g = realSite?.terrain;
+  if (!g) return 0;
+  const { n, radius, heights } = g;
+  const u = Math.max(0, Math.min(n - 1.001, ((x + radius) / (2 * radius)) * (n - 1)));
+  const v = Math.max(0, Math.min(n - 1.001, ((z + radius) / (2 * radius)) * (n - 1)));
+  const i = Math.floor(u), j = Math.floor(v);
+  const fu = u - i, fv = v - j;
+  const h00 = heights[j * n + i] ?? 0, h10 = heights[j * n + i + 1] ?? h00;
+  const h01 = heights[(j + 1) * n + i] ?? h00, h11 = heights[(j + 1) * n + i + 1] ?? h10;
+  // the parcel itself stays level so the building sits honestly
+  const flat = Math.max(0, 1 - Math.hypot(x, z) / 46);
+  return ((h00 * (1 - fu) + h10 * fu) * (1 - fv) + (h01 * (1 - fu) + h11 * fu) * fv) * (1 - flat);
+}
+
+function buildRealContext(mat, PAL, wood) {
+  // measured ground
+  const R = Math.max(realSite.radius * 1.6, 260);
+  groundMatRef = wood ? woodContextMaterial('ground')
+    : new THREE.MeshStandardMaterial({ color: PAL.base, roughness: 1 });
+  const groundGeo = new THREE.PlaneGeometry(R * 2, R * 2, 72, 72);
+  if (realSite.terrain) {
+    const pos = groundGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) pos.setZ(i, realTerrainAt(pos.getX(i), -pos.getY(i)));
+    groundGeo.computeVertexNormals();
+  }
+  const ground = new THREE.Mesh(groundGeo, groundMatRef);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  contextGroup.add(ground);
+
+  // the parcel disc
+  const plot = new THREE.Mesh(new THREE.CylinderGeometry(30, 31.5, 1.1, 40), mat(PAL.plot, 0.97));
+  plot.position.y = 0.2;
+  plot.receiveShadow = true;
+  contextGroup.add(plot);
+
+  // measured neighbours: every OSM footprint extruded to its measured height
+  const stock = wood ? null : [
+    new THREE.MeshStandardMaterial({ color: 0xe3ded3, roughness: 0.92 }),
+    new THREE.MeshStandardMaterial({ color: 0xd6d0c3, roughness: 0.92 }),
+    new THREE.MeshStandardMaterial({ color: 0xc9c3b6, roughness: 0.92 }),
+  ];
+  let bi = 0;
+  for (const b of realSite.buildings || []) {
+    const cx = b.poly.reduce((a, p) => a + p[0], 0) / b.poly.length;
+    const cz = b.poly.reduce((a, p) => a + p[1], 0) / b.poly.length;
+    if (Math.hypot(cx, cz) < 34) continue;         // the parcel being designed
+    try {
+      const sh = new THREE.Shape();
+      b.poly.forEach(([x, z], i) => i ? sh.lineTo(x, -z) : sh.moveTo(x, -z));
+      sh.closePath();
+      const geo = new THREE.ExtrudeGeometry(sh, { depth: b.h, bevelEnabled: false });
+      const mesh = new THREE.Mesh(geo, wood ? woodContextMaterial('block') : stock[bi++ % 3]);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = realTerrainAt(cx, cz);
+      mesh.castShadow = mesh.receiveShadow = true;
+      contextGroup.add(mesh);
+    } catch { /* degenerate footprint */ }
+  }
+}
+
 function buildSiteContext() {
   const L = getLandscape();
   const wood = isWoodWorld();
@@ -893,6 +967,16 @@ function buildSiteContext() {
   const mat = (colour, rough = 0.95, metal = 0) => wood
     ? woodContextMaterial('block')
     : new THREE.MeshStandardMaterial({ color: colour, roughness: rough, metalness: metal });
+
+  // A pinned real site replaces the invented fabric entirely: measured
+  // footprints, measured ground, nothing imagined.
+  if (realSite) {
+    buildRealContext(mat, PAL, wood);
+    scene.add(contextGroup);
+    if (!sunDisc) { /* the disc block below still runs on the invented path */ }
+    buildRealTail();
+    return;
+  }
 
   // ---------- terrain ----------
   groundMatRef = wood ? woodContextMaterial('ground')
@@ -1227,6 +1311,10 @@ function buildSiteContext() {
 
   scene.add(contextGroup);
 
+  buildRealTail();
+}
+
+function buildRealTail() {
   if (!sunDisc) {
     sunDisc = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 12),
       new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
