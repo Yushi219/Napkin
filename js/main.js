@@ -12,7 +12,7 @@ import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './
 import { initSplitters } from './splitters.js';
 import { interpretCommand, hasAI } from './chat.js';
 import { gptBuildMasses, hasGPT } from './openai.js';
-import { buildWithProtocol } from './builder.js';
+import { buildWithProtocol, fastBuild, quickCorrect } from './builder.js';
 import { hasClaude } from './claudecore.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
@@ -335,31 +335,40 @@ async function buildPasses() {
     lastSketchShot = sketch.sketchDataURL();
     lastReferenceShot = await cropReferenceImage(lastSketchShot);
 
-    // Step 1 (optional): Nano Banana redraws the scribble as a clean study model.
-    // Reading that is far more reliable than reading raw napkin ink.
+    // Sixty seconds is the longest a person waits in front of this screen, so
+    // fast is the default and the survey-and-audit protocol is a mode.
+    const deepMode = (localStorage.getItem('napkin_build_mode') || 'fast') === 'deep';
+
+    // The concept pass paints in parallel — it is display (and the deep
+    // mode's reading aid), never something the fast lane waits behind.
     let readShot = lastSketchShot;
+    let conceptPromise = null;
     if (hasGemini()) {
-      const cbusy = ui.addChatMsg('ai', 'Pass 1 — redrawing your sketch as a clean massing model…', 'busy');
-      ui.veil(true, 'pass 1 — redrawing the sketch…');
-      try {
-        const m0 = compute(customTypeText);
-        const concept = await conceptModelImage({ sketchDataURL: lastSketchShot, typeLabel: m0.type.label });
-        if (concept) {
-          conceptURL = concept;
-          readShot = concept;
-          $('concept-img').src = concept;
-          $('concept-pane').classList.remove('hidden');
-          cbusy.classList.remove('busy');
-          cbusy.textContent = 'Pass 1 done — clean massing model built from your sketch.';
-        } else cbusy.remove();
-      } catch (e) {
-        cbusy.className = 'cmsg ai err';
-        cbusy.textContent = `Concept pass skipped (${String(e.message).slice(0, 70)}) — reading the raw sketch instead.`;
-      }
+      const cbusy = ui.addChatMsg('ai', 'Concept pass — redrawing your sketch as a clean model…', 'busy');
+      const m0 = compute(customTypeText);
+      conceptPromise = conceptModelImage({ sketchDataURL: lastSketchShot, typeLabel: m0.type.label })
+        .then(concept => {
+          if (concept) {
+            conceptURL = concept;
+            $('concept-img').src = concept;
+            $('concept-pane').classList.remove('hidden');
+            cbusy.classList.remove('busy');
+            cbusy.textContent = 'Concept pass done.';
+          } else cbusy.remove();
+          return concept;
+        })
+        .catch(e => {
+          cbusy.className = 'cmsg ai err';
+          cbusy.textContent = `Concept pass skipped (${String(e.message).slice(0, 70)}).`;
+          return null;
+        });
+      if (deepMode) readShot = (await conceptPromise) || lastSketchShot;
     }
 
-    const busy = ui.addChatMsg('ai', 'Pass 2 — surveying, building level by level, auditing until convergence…', 'busy');
-    ui.veil(true, 'pass 2 — building: place, look, correct…');
+    const busy = ui.addChatMsg('ai', deepMode
+      ? 'Deep protocol — surveying, building level by level, auditing until convergence…'
+      : 'Reading the drawing and building…', 'busy');
+    ui.veil(true, deepMode ? 'deep protocol — survey, build, audit…' : 'reading & building…');
     let agentRan = false;
     try {
       // The builder loop drives the live scene the way an agent drives a CAD
@@ -391,8 +400,14 @@ async function buildPasses() {
       let v = null, engineUsed = '';
       if (hasClaude()) {
         try {
-          v = await buildWithProtocol(lastSketchShot, io); engineUsed = 'the Claude protocol'; agentRan = true;
-        } catch (agentErr) { console.warn('Claude protocol failed', agentErr); }
+          if (deepMode) {
+            v = await buildWithProtocol(lastSketchShot, io); engineUsed = 'the Claude protocol';
+          } else {
+            v = await fastBuild(lastSketchShot, io); engineUsed = 'the fast lane';
+            if (v) scheduleSelfCheck(v.targetURL || lastSketchShot);
+          }
+          agentRan = !!v;
+        } catch (agentErr) { console.warn('Claude build failed', agentErr); }
       }
       if (!v && hasGPT()) {
         try {
@@ -457,6 +472,32 @@ let lastCamera = null;
 let lastSketchShot = null;
 let lastReferenceShot = null;
 let conceptURL = null;
+
+// ---------------- the background self-check ----------------
+// Fires after the fast lane has already put a model on screen. If the user
+// starts editing meanwhile, their edits win and the correction is dropped.
+function scheduleSelfCheck(targetURL) {
+  const stamp = JSON.stringify(model.state.masses);
+  setTimeout(async () => {
+    const note = ui.addChatMsg('ai', 'Self-check — comparing the model against your sketch in the background…', 'busy');
+    try {
+      const r = await quickCorrect(targetURL, model.state.masses, lastCamera, {
+        snapshot: () => model.modelSnapshot(1000, { isolate: true }),
+      });
+      if (!r) { note.classList.remove('busy'); note.textContent = '✓ Self-check passed — the model matches the sketch.'; return; }
+      if (JSON.stringify(model.state.masses) !== stamp) {
+        note.classList.remove('busy');
+        note.textContent = 'Self-check found corrections, but you were already editing — kept your version.';
+        return;
+      }
+      model.applyPatch({ masses: r.masses });
+      if (r.camera) { lastCamera = r.camera; model.setCameraAngle(r.camera.yawDeg, r.camera.pitchDeg, r.camera.fovDeg); model.frameBuilding(1.14); }
+      refresh(); syncParams(); commitVersion('⟲ self-check');
+      note.classList.remove('busy');
+      note.textContent = '⟲ Self-checked against the sketch and corrected.';
+    } catch (e) { note.remove(); }
+  }, 400);
+}
 
 // ---------------- analysis-by-synthesis refinement ----------------
 

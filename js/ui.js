@@ -313,6 +313,11 @@ export function settingsModal(onSave) {
     <div class="modal-title" style="font-size:20px">Engines & platforms</div>
     <div class="settings-row"><label>Anthropic API key — the survey-and-audit reconstruction protocol</label>
       <input id="set-claude" type="password" placeholder="sk-ant-…" value="${esc(g('napkin_claude_key') || (window.NAPKIN_CONFIG?.anthropicKey ?? ''))}" /></div>
+    <div class="settings-row"><label>Build mode</label>
+      <select id="set-build-mode">
+        <option value="fast" ${g('napkin_build_mode') !== 'deep' ? 'selected' : ''}>Fast — one pass, under a minute, self-check in the background</option>
+        <option value="deep" ${g('napkin_build_mode') === 'deep' ? 'selected' : ''}>Deep protocol — survey, layered build, dual audits (minutes)</option>
+      </select></div>
     <div class="settings-row"><label>Claude model</label>
       <input id="set-claude-model" placeholder="claude-opus-5" value="${esc(g('napkin_claude_model'))}" /></div>
     <div class="settings-row"><label>OpenAI API key — fallback engine when no Anthropic key</label>
@@ -342,6 +347,7 @@ export function settingsModal(onSave) {
     localStorage.setItem('napkin_gemini_key', take('set-gemini'));
     localStorage.setItem('napkin_openai_key', take('set-openai'));
     localStorage.setItem('napkin_claude_key', take('set-claude'));
+    localStorage.setItem('napkin_build_mode', document.getElementById('set-build-mode').value);
     localStorage.setItem('napkin_claude_model', clean(document.getElementById('set-claude-model').value));
     localStorage.setItem('napkin_openai_model', clean(document.getElementById('set-openai-model').value));
     localStorage.setItem('napkin_openai_reasoning', clean(document.getElementById('set-openai-reasoning').value));

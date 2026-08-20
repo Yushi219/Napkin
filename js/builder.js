@@ -29,6 +29,92 @@ import { claudeToolCall, claudeTurn, hasClaude, claudeConfig } from './claudecor
 // fields and let sanitizeMasses fill the rest with sane defaults.
 const MASS_SCHEMA = { ...FULL_MASS_SCHEMA, required: ['id', 'w', 'd', 'h', 'x', 'y', 'z', 'on'] };
 
+// ---------- the fast lane ----------
+// Sixty seconds is the longest a person waits in front of this screen. The
+// fast lane is ONE forced tool call: read the drawing, return the whole scene.
+// The deep survey-and-audit protocol stays available as a mode for when
+// fidelity is worth minutes. After the fast scene lands, quickCorrect runs
+// one look-and-fix behind the live model — the user is already working.
+
+const FAST_TOOL = {
+  name: 'build_scene',
+  description: 'Return the complete reconstruction of the drawing in one pass.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      reading: { type: 'string', description: '<=18 words - the design intent' },
+      type: { type: 'string', enum: ['office', 'laboratory', 'residential', 'hotel', 'school'] },
+      floorsHint: { type: 'integer' },
+      envelope: { type: 'object', properties: { w: { type: 'number' }, d: { type: 'number' }, h: { type: 'number' } }, required: ['w', 'd', 'h'] },
+      camera: { type: 'object', properties: { yawDeg: { type: 'number' }, pitchDeg: { type: 'number' }, fovDeg: { type: 'number' } }, required: ['yawDeg', 'pitchDeg'] },
+      masses: { type: 'array', items: MASS_SCHEMA },
+    },
+    required: ['reading', 'envelope', 'camera', 'masses'],
+  },
+};
+
+const FAST_BRIEF = `Replicate the building in this drawing as boxes, faithfully — main massing and details both. Read level by level, bottom to top, then return the complete scene in one build_scene call.
+
+RULES. Metres; y up, ground y=0; front facade faces +z; x right; a box occupies x±w/2, z±d/2, y to y+h. kind=volume|slab|member; members 0.08-0.6 m thick for posts, beams and frames — an opening or roofless frame is built open, never a filled box. Every elevated element names its true support in "on" (cantilevers included); touching elements share coordinates exactly. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5; h = storeys × that. State the envelope first in your head and make the boxes fill it. Camera: yawDeg 0 faces the front, positive walks right; pitchDeg above horizon.`;
+
+export async function fastBuild(rawTargetURL, io) {
+  if (!hasClaude()) return null;
+  io.step?.('Reading the drawing and building — fast lane…');
+  const targetURL = await cropReferenceImage(rawTargetURL);
+  const hint = io.hints?.inkAspect
+    ? ` MEASURED (by code, trust it): the ink silhouette is ${io.hints.inkAspect.toFixed(2)}× as wide as tall — the composition seen from your camera must match.`
+    : '';
+  const out = await claudeToolCall({
+    content: [
+      { type: 'text', text: FAST_BRIEF + hint },
+      await claudeImage(targetURL),
+    ],
+    tool: FAST_TOOL, maxTokens: 5000,
+  }, 'fast build');
+  let masses = sanitizeMasses(out.masses);
+  if (!masses) throw new Error('the fast build produced no volumes');
+  masses = fitToEnvelope(masses, out.envelope);
+  await io.apply(masses, out.camera || null);
+  return {
+    masses, camera: out.camera || null, reading: out.reading || 'Fast reconstruction.',
+    type: out.type || null, floorsHint: Number.isFinite(+out.floorsHint) ? +out.floorsHint : null,
+    targetURL,
+  };
+}
+
+// One look, one correction, on the quick model — run after the fast scene is
+// already on screen, so none of this time is waited on.
+const CORRECT_TOOL = {
+  name: 'correct_scene',
+  description: 'Return the complete corrected scene, or an empty masses array if the model already matches.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      masses: { type: 'array', items: MASS_SCHEMA },
+      camera: { type: 'object', properties: { yawDeg: { type: 'number' }, pitchDeg: { type: 'number' }, fovDeg: { type: 'number' } } },
+    },
+    required: ['masses'],
+  },
+};
+
+export async function quickCorrect(targetURL, masses, camera, io) {
+  const shot = await io.snapshot();
+  const pair = (await pairPicture(targetURL, shot)) || (await claudeImage(shot));
+  const geo = geometryAudit(masses);
+  const out = await claudeToolCall({
+    system: 'You correct a box reconstruction against its reference drawing. Left pane: the drawing. Right pane: the current model. Return the COMPLETE corrected masses array — every element, changed or not. If the model already reads as the same building, return masses: [].',
+    content: [
+      { type: 'text', text: 'Current scene: ' + JSON.stringify(masses) + '\n' + geo.summary },
+      pair,
+      { type: 'text', text: 'Judge relations, storey counts, openings, silhouette proportion, camera. Correct what is wrong.' },
+    ],
+    tool: CORRECT_TOOL, maxTokens: 5000, model: claudeConfig().reviewerModel,
+  }, 'self-check');
+  if (!out?.masses?.length) return null;
+  const fixed = sanitizeMasses(out.masses);
+  return fixed ? { masses: fixed, camera: out.camera || null } : null;
+}
+
 // ---------- stage 1: forensics ----------
 
 const FORENSICS_TOOL = {
