@@ -499,7 +499,7 @@ function loadImgEl(url) {
 // Sketch2BIM and the BlenderGym line of work both find that a model corrects
 // far better against a single side-by-side than against two separate images —
 // alignment becomes something it can see, not something it must remember.
-async function pairPicture(leftURL, rightURL) {
+export async function pairPicture(leftURL, rightURL) {
   try {
     const [a, b] = await Promise.all([loadImgEl(leftURL), loadImgEl(rightURL)]);
     const H = 560;
@@ -519,7 +519,7 @@ async function pairPicture(leftURL, rightURL) {
 }
 
 // Numbers measured by code, not recalled by the model — the loop trusts these.
-function massExtents(masses) {
+export function massExtents(masses) {
   if (!masses?.length) return '';
   const xs = masses.flatMap(m => [m.x - m.w / 2, m.x + m.w / 2]);
   const zs = masses.flatMap(m => [m.z - m.d / 2, m.z + m.d / 2]);
@@ -528,7 +528,7 @@ function massExtents(masses) {
   return `Measured: the composition is ${w.toFixed(1)} m wide, ${d.toFixed(1)} m deep, ${top.toFixed(1)} m to the top, ${masses.length} volumes.`;
 }
 
-const BUILDER_TOOLS = [
+export const BUILDER_TOOLS = [
   { name: 'set_scene',
     description: 'Replace the whole composition with these boxes. Use once, for the first draft. Include the camera matching the sketch viewpoint.',
     input_schema: { type: 'object', properties: {
@@ -554,7 +554,7 @@ const BUILDER_TOOLS = [
     }, required: ['reading'] } },
 ];
 
-const BUILDER_BRIEF = `You are rebuilding the massing in this sketch as boxes in a live 3D scene, the way you would drive a CAD program: place, look, correct.
+export const BUILDER_BRIEF = `You are rebuilding the massing in this sketch as boxes in a live 3D scene, the way you would drive a CAD program: place, look, correct.
 
 WORKFLOW - follow it exactly:
 1. set_scene with your full first draft: every box, and the camera matching the sketch viewpoint.

@@ -11,6 +11,7 @@ import { EXAMPLES, strokesFor } from './examples.js';
 import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './gallery.js';
 import { initSplitters } from './splitters.js';
 import { interpretCommand, hasClaude, claudeConfig } from './chat.js';
+import { gptBuildMasses, hasGPT } from './openai.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
 
@@ -325,7 +326,7 @@ function measureInkAspect() {
 async function buildPasses() {
 
   let patch = null, reading = '';
-  if (hasClaude()) {
+  if (hasClaude() || hasGPT()) {
     $('btn-build').disabled = true;
     lastSketchShot = sketch.sketchDataURL();
 
@@ -358,27 +359,38 @@ async function buildPasses() {
     try {
       // The builder loop drives the live scene the way an agent drives a CAD
       // program: draft, render, compare with the sketch, revise. Every error
-      // it makes is one it gets to see. Falls back to the one-shot reading.
-      let v;
-      try {
-        v = await agentBuildMasses(readShot, anthropicCfg(), {
-          hints: { inkAspect: measureInkAspect() },
-          apply: async (masses, camera) => {
-            leaveImported();
-            model.applyPatch({ archetype: null, masses, profile: null, profileSide: null, footprint: null, segments: [], mode: 'massing' });
-            refresh();
-            if (camera) model.setCameraAngle(camera.yawDeg, camera.pitchDeg);
-            await new Promise(r => setTimeout(r, 120));   // one painted frame
-          },
-          snapshot: () => model.modelSnapshot(1100),
-          step: label => { ui.veil(true, label); busy.textContent = label; },
-        });
-        agentRan = true;
-      } catch (agentErr) {
-        console.warn('builder loop fell back to one-shot read', agentErr);
+      // it makes is one it gets to see. The engine is a choice — Claude or
+      // ChatGPT, same tools, same scene — and each falls back to the other,
+      // then to the one-shot reading.
+      const io = {
+        hints: { inkAspect: measureInkAspect() },
+        apply: async (masses, camera) => {
+          leaveImported();
+          model.applyPatch({ archetype: null, masses, profile: null, profileSide: null, footprint: null, segments: [], mode: 'massing' });
+          refresh();
+          if (camera) model.setCameraAngle(camera.yawDeg, camera.pitchDeg);
+          await new Promise(r => setTimeout(r, 120));   // one painted frame
+        },
+        snapshot: () => model.modelSnapshot(1100),
+        step: label => { ui.veil(true, label); busy.textContent = label; },
+      };
+      const preferGpt = (localStorage.getItem('napkin_builder_engine') === 'gpt' && hasGPT()) || !hasClaude();
+      const engines = [];
+      if (hasGPT()) engines.push(['ChatGPT', () => gptBuildMasses(readShot, io)]);
+      if (hasClaude()) engines.push(['Claude', () => agentBuildMasses(readShot, anthropicCfg(), io)]);
+      if (!preferGpt) engines.reverse();
+      let v = null, engineUsed = '';
+      for (const [label, run] of engines) {
+        try {
+          v = await run(); engineUsed = label; agentRan = true; break;
+        } catch (agentErr) { console.warn(label + ' builder failed', agentErr); }
+      }
+      if (!v && hasClaude()) {
         ui.veil(true, 'pass 2 — reading volumes and storeys…');
         v = await visionMasses(readShot, anthropicCfg());
       }
+      if (!v) throw new Error('no builder engine could read the sketch — check the keys in ⚙');
+      if (engineUsed) busy.textContent = 'Built by the ' + engineUsed + ' builder loop.';
       busy.remove();
       patch = {
         archetype: null, masses: v.masses, reading: v.reading,
@@ -395,7 +407,7 @@ async function buildPasses() {
       console.warn('vision read failed → local reader', e);
       const msg = hasClaude()
         ? `Claude could not read the sketch — ${readFailure(e)}. Falling back to the local silhouette reader.`
-        : 'This device has no Anthropic key, so the sketch was read by the local silhouette engine. Add a key in ⚙ to have Claude read it properly — it stays in this browser only.';
+        : 'This device has no AI key, so the sketch was read by the local silhouette engine. Add an Anthropic or OpenAI key in ⚙ — it stays in this browser only.';
       ui.addChatMsg('ai', msg, 'err');
     }
     $('btn-build').disabled = false;

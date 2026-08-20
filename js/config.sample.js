@@ -7,6 +7,7 @@
 // Without keys the app still runs: sketch reading falls back to the local
 // silhouette engine and renders fall back to local stylisation.
 window.NAPKIN_CONFIG = {
+  openaiKey: '',        // ChatGPT builder engine (optional)
   anthropicKey: "",
   anthropicModel: "claude-sonnet-5",
   geminiKey: "",

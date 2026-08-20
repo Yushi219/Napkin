@@ -317,6 +317,15 @@ export function settingsModal(onSave) {
       <select id="set-vision-model">${CLAUDE_MODELS.map(m => `<option ${g('napkin_claude_vision_model') === m || (!g('napkin_claude_vision_model') && m === 'claude-opus-5') ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
     <div class="settings-row"><label>Model for chat edits — quick changes to numbers that exist</label>
       <select id="set-chat-model">${CLAUDE_MODELS.map(m => `<option ${g('napkin_claude_model') === m || (!g('napkin_claude_model') && m === 'claude-sonnet-5') ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+    <div class="settings-row"><label>OpenAI API key — ChatGPT as an alternative builder engine</label>
+      <input id="set-openai" type="password" placeholder="sk-proj-…" value="${esc(g('napkin_openai_key') || (window.NAPKIN_CONFIG?.openaiKey ?? ''))}" /></div>
+    <div class="settings-row"><label>Builder engine — who reads the drawing and drives the model</label>
+      <select id="set-engine">
+        <option value="claude" ${g('napkin_builder_engine') !== 'gpt' ? 'selected' : ''}>Claude builder loop (default)</option>
+        <option value="gpt" ${g('napkin_builder_engine') === 'gpt' ? 'selected' : ''}>ChatGPT builder loop</option>
+      </select></div>
+    <div class="settings-row"><label>OpenAI model for the builder</label>
+      <input id="set-openai-model" placeholder="gpt-5.1" value="${esc(g('napkin_openai_model'))}" /></div>
     <div class="settings-row"><label>Gemini API key — Nano Banana Pro renders</label>
       <input id="set-gemini" type="password" placeholder="AIza…" value="${esc(g('napkin_gemini_key') || (window.NAPKIN_CONFIG?.geminiKey ?? ''))}" /></div>
     <div style="margin:16px 0 6px; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted)">Sponsor platforms</div>
@@ -336,6 +345,9 @@ export function settingsModal(onSave) {
     };
     localStorage.setItem('napkin_claude_key', take('set-claude'));
     localStorage.setItem('napkin_gemini_key', take('set-gemini'));
+    localStorage.setItem('napkin_openai_key', take('set-openai'));
+    localStorage.setItem('napkin_builder_engine', document.getElementById('set-engine').value);
+    localStorage.setItem('napkin_openai_model', clean(document.getElementById('set-openai-model').value));
     localStorage.setItem('napkin_claude_vision_model', document.getElementById('set-vision-model').value);
     localStorage.setItem('napkin_claude_model', document.getElementById('set-chat-model').value);
     for (const s of SPONSORS) localStorage.setItem(s.field, clean(document.getElementById(`set-${s.id}`).value));
