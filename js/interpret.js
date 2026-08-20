@@ -461,6 +461,27 @@ function claudeImage(dataURL) {
   });
 }
 
+// Reading a drawing gives good proportions and shaky absolute size — the parts
+// come back in the right ratios but the whole composition lands too small or
+// too large. The envelope is a separate, deliberate judgement, so the boxes are
+// scaled uniformly onto it. Proportion is preserved exactly; only size moves.
+export function fitToEnvelope(masses, envelope) {
+  if (!masses || !envelope) return masses;
+  const wantH = +envelope.h, wantW = +envelope.w;
+  const isH = Number.isFinite(wantH) && wantH >= 3;
+  const gotH = Math.max(...masses.map(m => m.y + m.h));
+  const xs = masses.flatMap(m => [m.x - m.w / 2, m.x + m.w / 2]);
+  const gotW = Math.max(...xs) - Math.min(...xs);
+  // height is the more reliable of the two — storeys are countable, plan width
+  // is not — so it leads, and width only steps in when height was not given
+  const f = isH ? wantH / gotH
+    : (Number.isFinite(wantW) && wantW >= 3 && gotW > 0.5 ? wantW / gotW : 1);
+  if (!Number.isFinite(f) || f < 0.2 || f > 6 || Math.abs(f - 1) < 0.12) return masses;
+  const r2 = v => Math.round(v * 100) / 100;
+  for (const m of masses) for (const k of ['w', 'd', 'h', 'x', 'y', 'z']) m[k] = r2(m[k] * f);
+  return masses;
+}
+
 export async function visionMasses(dataURL, cfg) {
   if (!cfg.anthropicKey) return null;
   const picture = await claudeImage(dataURL);
@@ -484,11 +505,13 @@ Work in four stages. Stages 1-3 are short plain prose — never type { or } anyw
 
 STAGE 1 — SCENE. Two sentences: what is drawn, and the viewpoint (which facades are visible, eye height).
 
-STAGE 2 — STOREYS. Count drawn floor lines, slats, mullions, doors or people. State each major volume's storey count (one storey ≈ 3.6 m). If uncountable, say "estimating".
+STAGE 2 — TYPE, STOREY HEIGHT, STOREYS. Say what kind of building this is, then take its storey height from this table and use that number for the rest of the reading: detached house or villa 3.0 m · apartments 3.1 m · hotel 3.2 m · school 3.6 m · office 3.9 m · laboratory 4.5 m. Count drawn floor lines, slats, mullions, doors or people and state each major volume's storey count. If uncountable, say "estimating".
 
 STAGE 3 — VOLUMES AND RELATIONS. Name each box (tower, bar, podium, wing, canopy...). For each, state its relations BEFORE any numbers: what it sits on, which faces are flush with which neighbour, what it cantilevers past, what it butts against. An opening, portal or gate through a volume is never one box — decompose it: two legs plus a lintel spanning them, together keeping the parent's overall envelope. A notch = the L of remaining boxes.
 
-STAGE 4 — NUMBERS. Coordinate frame, tied to the drawing: y up, ground y=0. The main front facade faces +z (toward the viewer). x increases to the RIGHT in the sketch. z increases toward the viewer — nearer volumes have larger z. A box occupies x±w/2, z±d/2, y to y+h. Volumes that appear to touch must share coordinates exactly — compute positions from the relations, not by eye:
+STAGE 4 — ENVELOPE FIRST. Before any box, state the overall size of the whole composition in metres: width across, depth back, height to the highest point. Sanity-check it against what this kind of building actually is — detached house 8-20 m wide and 6-11 m tall · townhouse row 20-45 m wide · villa or gallery 15-35 m wide and 7-14 m tall · school or office block 30-90 m wide and 12-35 m tall · mid-rise 25-60 m tall · tower 25-60 m wide and 60-300 m tall. A drawing carries proportion, not size; this line is what fixes the size, so get it right before the parts.
+
+STAGE 5 — NUMBERS. Every box must fit inside the envelope you just stated, and together they must fill it — the widest box spans the envelope width, the tallest reaches the envelope height. Coordinate frame, tied to the drawing: y up, ground y=0. The main front facade faces +z (toward the viewer). x increases to the RIGHT in the sketch. z increases toward the viewer — nearer volumes have larger z. A box occupies x±w/2, z±d/2, y to y+h. Volumes that appear to touch must share coordinates exactly — compute positions from the relations, not by eye:
 - B sits on A: B.y = A.y + A.h exactly.
 - Flush faces share the plane exactly: fronts, B.z+B.d/2 = A.z+A.d/2; left sides, B.x-B.w/2 = A.x-A.w/2; likewise right/back/top.
 - Side-by-side touch: A.x+A.w/2 = B.x-B.w/2. No gaps, no accidental overlaps; interpenetrate only where the drawing shows piercing.
@@ -498,11 +521,12 @@ Centre the composition near x=0, z=0. Verify every stated relation holds in your
 
 Then output ONLY this JSON, nothing after it:
 {"reading":"<=18 words — the design intent",
+ "envelope":{"w":metres,"d":metres,"h":metres},
  "masses":[{"id":"short-slug","role":"tower|bar|podium|canopy|wing|core|volume","w":metres,"d":metres,"h":metres,"x":centre,"z":centre,"y":base elevation,"rotY":degrees,"facade":"slats-v|slats-h|glass|solid","cantilever":bool,"on":"ground"|"<id>","flush":["front|back|left|right|top:<id>"],"partOf":"<slug>"|null,"storeys":int|null}],
  "camera":{"yawDeg":-180..180,"pitchDeg":4..60},
  "floorsHint":int|null,"type":"office|laboratory|residential|hotel|school"|null}
 
-Max 10 boxes. h = storeys × 3.6 wherever storeys were counted. camera = the sketch's viewpoint: yawDeg 0 faces the front (+z) facade; positive yaw walks around to the right (two-point perspective showing front+right ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35). Ignore ground lines, hatching, people, trees.` },
+Max 10 boxes. h = storeys × the storey height you chose in stage 2, wherever storeys were counted. camera = the sketch's viewpoint: yawDeg 0 faces the front (+z) facade; positive yaw walks around to the right (two-point perspective showing front+right ≈ 25-40); pitchDeg = height above horizon (street ≈ 8, aerial ≈ 35). Ignore ground lines, hatching, people, trees.` },
         ],
       }],
     }),
@@ -511,7 +535,7 @@ Max 10 boxes. h = storeys × 3.6 wherever storeys were counted. camera = the ske
   const data = await res.json();
   const text = (data.content || []).map(b => b.text || '').join('');
   const parsed = parseJsonLoose(text, data.stop_reason);
-  const masses = sanitizeMasses(parsed.masses);
+  const masses = fitToEnvelope(sanitizeMasses(parsed.masses), parsed.envelope);
   if (!masses) throw new Error('no usable masses');
   const cam = parsed.camera && Number.isFinite(+parsed.camera.yawDeg)
     ? { yawDeg: Math.max(-180, Math.min(180, +parsed.camera.yawDeg)), pitchDeg: Math.max(4, Math.min(60, +parsed.camera.pitchDeg || 18)) }

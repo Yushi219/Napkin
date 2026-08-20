@@ -227,9 +227,10 @@ function enterWorkspace(msg) {
   return true;
 }
 
+// every caller of this is a vision read, so it carries the reading model
 function anthropicCfg() {
-  const { key, model } = claudeConfig();
-  return { anthropicKey: key, anthropicModel: model };
+  const { key, visionModel } = claudeConfig();
+  return { anthropicKey: key, anthropicModel: visionModel };
 }
 
 // fetch reports a bad header as a parse failure with no hint of which one.
@@ -715,6 +716,14 @@ const paramHooks = {
     m[k] = v;
     if (commit) { refresh(); commitVersion(`param ${m.role}.${k}`); }
     else liveRebuild();
+  },
+  // One drag moves every volume and position together against the size the
+  // drawing was read at, so it stays exact however far it is pushed back.
+  onMassScale(f, commit) {
+    model.scaleMasses(f);
+    if (commit) { refresh(); syncParams(); commitVersion(`scaled to ${Math.round(f * 100)}%`); }
+    else liveRebuild();
+    return model.designedHeight();
   },
   onMassFacade(i, f) {
     if (!model.state.masses?.[i]) return;

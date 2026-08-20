@@ -2,6 +2,7 @@
 import { METRIC_DEFS } from './metrics.js';
 import { STYLES } from './render.js';
 import { SPONSORS, sponsorStatus, stream } from './versions.js';
+import { CLAUDE_MODELS } from './chat.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -199,7 +200,20 @@ export function renderParams(state, hooks) {
 
   // ---- AI composition: per-volume controls ----
   if (state.masses && state.masses.length) {
-    p.innerHTML = state.masses.map((m, i) =>
+    // Size before parts. A drawing carries proportion far better than scale,
+    // so the first thing to reach for is the size of the whole thing.
+    const sc = state.massScale || 1;
+    const tall = Math.max(...state.masses.map(m => m.y + m.h));
+    const head =
+      '<div class="pgroup pgroup-scale">' +
+        '<div class="pgroup-head"><span class="pg-role">whole building</span>' +
+          '<button class="pg-reset" id="scale-reset" title="Back to the size it was read at">reset</button></div>' +
+        '<div class="prow"><label title="Scales every volume and position together">scale</label>' +
+          '<input type="range" min="0.3" max="3" step="0.01" value="' + sc + '" id="mass-scale" />' +
+          '<span class="pval" id="pv-scale">' + (Math.round(sc * 100) / 100) + '×</span></div>' +
+        '<div class="pnote" id="scale-note">' + Math.round(tall) + ' m to the top</div>' +
+      '</div>';
+    p.innerHTML = head + state.masses.map((m, i) =>
       '<div class="pgroup" data-mi="' + i + '">' +
         '<div class="pgroup-head"><span class="pg-role">' + esc(m.role) + '</span>' +
         '<select data-facade="' + i + '">' +
@@ -211,6 +225,20 @@ export function renderParams(state, hooks) {
           '<span class="pval" id="pv-' + i + '-' + k + '">' + (Math.round(m[k] * 10) / 10) + '</span></div>').join('') +
       '</div>').join('') +
       '<button class="add-mass" id="add-mass">\uff0b add a volume</button>';
+
+    const scEl = p.querySelector('#mass-scale');
+    if (scEl) {
+      const show = f => {
+        $('pv-scale').textContent = (Math.round(f * 100) / 100) + '×';
+        const t = hooks.onMassScale(f, false);
+        if (t) $('scale-note').textContent = Math.round(t) + ' m to the top';
+      };
+      scEl.addEventListener('input', () => show(+scEl.value));
+      scEl.addEventListener('change', () => hooks.onMassScale(+scEl.value, true));
+      p.querySelector('#scale-reset').addEventListener('click', () => {
+        scEl.value = 1; show(1); hooks.onMassScale(1, true);
+      });
+    }
 
     p.querySelectorAll('input[type=range][data-k]').forEach(el => {
       el.addEventListener('input', () => {
@@ -285,6 +313,10 @@ export function settingsModal(onSave) {
     <div class="modal-title" style="font-size:20px">Engines & platforms</div>
     <div class="settings-row"><label>Anthropic API key — chat modelling + photo vision</label>
       <input id="set-claude" type="password" placeholder="sk-ant-…" value="${esc(g('napkin_claude_key') || (window.NAPKIN_CONFIG?.anthropicKey ?? ''))}" /></div>
+    <div class="settings-row"><label>Model for reading a drawing — the hardest job here, spatial reasoning</label>
+      <select id="set-vision-model">${CLAUDE_MODELS.map(m => `<option ${g('napkin_claude_vision_model') === m || (!g('napkin_claude_vision_model') && m === 'claude-opus-5') ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+    <div class="settings-row"><label>Model for chat edits — quick changes to numbers that exist</label>
+      <select id="set-chat-model">${CLAUDE_MODELS.map(m => `<option ${g('napkin_claude_model') === m || (!g('napkin_claude_model') && m === 'claude-sonnet-5') ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
     <div class="settings-row"><label>Gemini API key — Nano Banana Pro renders</label>
       <input id="set-gemini" type="password" placeholder="AIza…" value="${esc(g('napkin_gemini_key') || (window.NAPKIN_CONFIG?.geminiKey ?? ''))}" /></div>
     <div style="margin:16px 0 6px; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted)">Sponsor platforms</div>
@@ -304,6 +336,8 @@ export function settingsModal(onSave) {
     };
     localStorage.setItem('napkin_claude_key', take('set-claude'));
     localStorage.setItem('napkin_gemini_key', take('set-gemini'));
+    localStorage.setItem('napkin_claude_vision_model', document.getElementById('set-vision-model').value);
+    localStorage.setItem('napkin_claude_model', document.getElementById('set-chat-model').value);
     for (const s of SPONSORS) localStorage.setItem(s.field, clean(document.getElementById(`set-${s.id}`).value));
     closeModal();
     if (stripped) toast('Saved — stray invisible characters were removed from a key as it was pasted.', 4200);

@@ -11,10 +11,17 @@ import { sanitizeMasses } from './interpret.js';
 // reduced to printable ASCII at the one place it is read.
 export const cleanKey = v => String(v ?? '').replace(/[^!-~]/g, '');
 
+// Reading a drawing into volumes is a spatial-reasoning job and the hardest
+// thing this app asks of a model, so it gets the strongest one by default.
+// Conversational edits stay on the quicker model — they are one-line changes
+// to numbers that already exist.
+export const CLAUDE_MODELS = ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5'];
+
 export function claudeConfig() {
   return {
     key: cleanKey(localStorage.getItem('napkin_claude_key') || window.NAPKIN_CONFIG?.anthropicKey || ''),
     model: cleanKey(localStorage.getItem('napkin_claude_model') || window.NAPKIN_CONFIG?.anthropicModel || 'claude-sonnet-5'),
+    visionModel: cleanKey(localStorage.getItem('napkin_claude_vision_model') || window.NAPKIN_CONFIG?.anthropicVisionModel || 'claude-opus-5'),
   };
 }
 function cfg() { return claudeConfig(); }

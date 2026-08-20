@@ -44,9 +44,50 @@ export const state = {
 
 export function applyPatch(patch) {
   for (const [k, v] of Object.entries(patch)) if (v !== undefined) state[k] = v;
+  // A new set of volumes becomes the reference the scale slider works from,
+  // so scaling stays lossless however far it is dragged either way.
+  if (patch.masses !== undefined) captureMassBase();
   state.floors = Math.max(2, Math.min(70, Math.round(state.floors)));
   state.twist = Math.max(-90, Math.min(90, state.twist));
   state.taper = Math.max(0.4, Math.min(1.15, state.taper));
+}
+
+// ---- one scale for the whole composition ----
+// Reading a drawing gives good proportions and shaky absolute size, so the
+// size is worth a control of its own. Every dimension and position moves
+// together against a stored baseline, which keeps repeated drags exact.
+export function captureMassBase() {
+  state.massBase = Array.isArray(state.masses) ? structuredClone(state.masses) : null;
+  state.massScale = 1;
+}
+export function massScale() { return state.massScale || 1; }
+export function scaleMasses(factor) {
+  if (!Array.isArray(state.masses) || !Array.isArray(state.massBase)) return 1;
+  const f = Math.max(0.2, Math.min(6, +factor || 1));
+  const r2 = v => Math.round(v * 100) / 100;
+  state.masses.forEach((m, i) => {
+    const b = state.massBase[i];
+    if (!b) return;
+    for (const k of ['w', 'd', 'h', 'x', 'y', 'z']) m[k] = r2(b[k] * f);
+  });
+  state.massScale = f;
+  return f;
+}
+
+// the tallest point of whatever is being designed, in metres
+export function designedHeight() {
+  if (Array.isArray(state.masses) && state.masses.length) {
+    return Math.max(...state.masses.map(m => (+m.y || 0) + (+m.h || 0)));
+  }
+  return (state.floors || 12) * (state.floorHeight || 3.6);
+}
+function designedFootprint() {
+  if (Array.isArray(state.masses) && state.masses.length) {
+    const xs = state.masses.flatMap(m => [m.x - m.w / 2, m.x + m.w / 2]);
+    const zs = state.masses.flatMap(m => [m.z - m.d / 2, m.z + m.d / 2]);
+    return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
+  }
+  return Math.max(state.baseWidth || 32, state.baseDepth || 26);
 }
 
 export function snapshotState() { return structuredClone(state); }
@@ -649,6 +690,21 @@ function rebuildContext() {
 const GROUND_COL = { paved: 0xdcd6c4, lawn: 0x8fa878, meadow: 0xa8ac7a, gravel: 0xcfc7b4 };
 const BASE_COL = { paved: 0xe9e4d6, lawn: 0xdfe4d2, meadow: 0xe1e3d0, gravel: 0xe4e0d4 };
 
+function fabricFor(L) {
+  const F = L.fabric;
+  const want = Math.max(9, designedHeight() * 1.7);
+  const k = Math.min(1, want / F.hMax);
+  if (k > 0.92) return F;                       // already the right register
+  const grow = 0.45 + k * 0.55;                 // blocks shrink less than they shorten
+  return { ...F,
+    hMin: Math.max(3, F.hMin * k),
+    hMax: Math.max(6, F.hMax * k),
+    near: Math.max(24, F.near * grow),
+    wMin: Math.max(5, F.wMin * grow),
+    wMax: Math.max(9, F.wMax * grow),
+  };
+}
+
 function buildSiteContext() {
   const L = getLandscape();
   const wood = isWoodWorld();
@@ -687,10 +743,12 @@ function buildSiteContext() {
   ground.receiveShadow = true;
   contextGroup.add(ground);
 
-  // the plot: always level so the building sits properly
+  // the plot: always level so the building sits properly, and never so wide
+  // that a small building looks marooned on it
+  const plotR = Math.max(12, Math.min(L.plot, designedFootprint() * 1.9));
   if (L.plot > 0) {
     const plot = new THREE.Mesh(
-      new THREE.CylinderGeometry(L.plot, L.plot + 1.5, 1.1, 40),
+      new THREE.CylinderGeometry(plotR, plotR + 1.5, 1.1, 40),
       mat(PAL.plot, 0.97));
     plot.position.y = 0.2;
     plot.receiveShadow = true;
@@ -794,7 +852,10 @@ function buildSiteContext() {
   }
 
   // ---------- surrounding building stock ----------
-  const F = L.fabric;
+  // Neighbours belong in the same league as the thing being designed: a seven
+  // metre house dropped in a downtown core reads as a toy on a plaza. The
+  // fabric keeps its character and changes register.
+  const F = fabricFor(L);
   const stockMats = wood ? null : [
     new THREE.MeshStandardMaterial({ color: 0xe3ded3, roughness: 0.92 }),
     new THREE.MeshStandardMaterial({ color: 0xd6d0c3, roughness: 0.92 }),

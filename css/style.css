@@ -1286,3 +1286,15 @@ body.fs #viewport > #cam-pane #cam-hint { border-color: #ffffff1f; color: #b9b3a
   }
   body #btn-home .ico, body #btn-settings .ico { width: 15px; height: 15px; }
 }
+
+/* ---- the scale control sits above the volumes, and reads as the summary ---- */
+.pgroup-scale { border-color: var(--accent); background: #fdf6f1; }
+.pgroup-scale .pg-role { color: var(--accent); font-weight: 600; }
+.pgroup-scale input[type=range] { accent-color: var(--accent); }
+.pg-reset {
+  background: none; border: 1px solid var(--line); border-radius: 10px;
+  font-family: var(--font-ui); font-size: 9.5px; color: var(--muted);
+  padding: 2px 7px; cursor: pointer;
+}
+.pg-reset:hover { border-color: var(--accent); color: var(--accent); }
+.pnote { font-family: var(--font-mono); font-size: 10px; color: var(--muted); padding: 2px 2px 0; }
