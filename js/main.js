@@ -7,6 +7,7 @@ import { renderImage, hasGemini, conceptModelImage, writeRenderPrompt } from './
 import * as hands from './hands.js';
 import { SITES, getSite, seasonDate, daylightWindow, setCustomSite, clearCustomSite } from './solar.js';
 import * as siteData from './site.js';
+import { runAudit, AUDIT_COLORS } from './auditor.js';
 import { initDevice, deviceKind, isTouch, showPane, onDeviceChange } from './device.js';
 import { EXAMPLES, strokesFor } from './examples.js';
 import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './gallery.js';
@@ -46,9 +47,17 @@ function setViewMode(mode) {
   if (mode === 'render') {
     if (!lastRenderURL) { ui.addChatMsg('ai', 'No render yet — type what you want and press Render ✦.'); }
     layer.classList.toggle('hidden', !lastRenderURL);
+  } else if (mode === 'audit') {
+    layer.classList.add('hidden');
+    setCompare(false);
+    model.setModelMode('white');
+    model.rebuild();
+    setAuditMode(true);
+    if (selected.size) model.setSelection([...selected]);
   } else {
     layer.classList.add('hidden');
     setCompare(false);
+    setAuditMode(false);
     model.setModelMode(mode);
     model.rebuild();
     if (selected.size) model.setSelection([...selected]);
@@ -247,6 +256,7 @@ function refresh({ reinterpret = false } = {}) {
   if (!model.hasImported()) model.rebuild();   // an imported mesh stays on stage until a parametric edit
   const m = compute(customTypeText);
   ui.renderMetrics(m);
+  runAuditView();
   ui.setModelBadge(model.hasImported() && importedBadge ? importedBadge : '');
   $('wire-pane').classList.toggle('hidden', !(built && (model.state.masses?.length || model.state.profile || model.state.mode === 'plan')));
   window.__liveSync?.();
@@ -957,6 +967,51 @@ function syncSunControls() {
   if ($('sun-readout')) $('sun-readout').textContent = `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+// ---------------- the audit view ----------------
+// Structure, code and climate findings painted straight onto the model, and
+// re-run every time the model changes while the view is open.
+let auditOn = false;
+
+function runAuditView() {
+  if (!auditOn) return;
+  const report = runAudit({
+    masses: model.state.masses,
+    metrics: compute(customTypeText),
+    site: siteData.currentRealSite(),
+  });
+  model.showAuditShells(report.worstByElement, AUDIT_COLORS);
+  const head = $('audit-head'), list = $('audit-list');
+  head.innerHTML = `
+    <span class="ac"><span class="dot" style="background:#d4453a"></span>${report.counts.blocker}</span>
+    <span class="ac"><span class="dot" style="background:#e08a3c"></span>${report.counts.major}</span>
+    <span class="ac"><span class="dot" style="background:#d9b545"></span>${report.counts.minor}</span>
+    <span style="margin-left:auto;color:var(--muted);font-weight:400">${siteData.currentRealSite() ? '📍 ' + (siteData.currentRealSite().region.label || 'site') : 'no site pinned'}</span>`;
+  if (!report.findings.length) {
+    list.innerHTML = '<div class="audit-clean">Nothing flagged. Structure stands, plans daylight, carbon inside the benchmark.</div>';
+    return;
+  }
+  list.innerHTML = report.findings.map((x, i) => `
+    <div class="audit-item sev-${x.severity}" data-where="${x.where}">
+      <div class="bar"></div>
+      <div>
+        <div class="ai-where">${x.domain} · ${x.where}</div>
+        <div class="ai-issue">${x.issue}</div>
+        ${x.fix ? `<div class="ai-fix">→ ${x.fix}</div>` : ''}
+      </div>
+    </div>`).join('');
+  list.querySelectorAll('.audit-item').forEach(el => el.addEventListener('click', () => {
+    const idx = model.state.masses?.findIndex(m => m.id === el.dataset.where);
+    if (idx >= 0) { model.setSelection([idx]); }
+  }));
+}
+
+function setAuditMode(on) {
+  auditOn = on;
+  $('audit-panel').classList.toggle('hidden', !on);
+  if (on) runAuditView();
+  else model.clearAuditShells();
+}
+
 // ---------------- the real site ----------------
 // Search an address, circle the parcel on a real map, and the model world
 // re-anchors: measured neighbours, measured ground, the sky actually over
@@ -1531,6 +1586,70 @@ function wire() {
   });
 
   $('sel-clear').addEventListener('click', clearSelection);
+
+  // ---- direct editing: delete, and pull a face with the mouse ----
+  // The hand gestures taught the model face-level push-pull; the mouse gets
+  // the same verbs. Double-click a face to take hold of it — drag pulls it,
+  // anywhere else lets go. Delete removes the selected volume.
+  function deleteSelected() {
+    if (!model.state.masses?.length || !selected.size) return;
+    const idx = [...selected].sort((a, b) => b - a);
+    const names = idx.map(i => model.state.masses[i]?.role || 'volume');
+    for (const i of idx) model.state.masses.splice(i, 1);
+    clearSelection(); refresh(); syncParams();
+    commitVersion(`deleted ${names.join(', ')}`);
+    ui.toast(`Deleted ${names.join(', ')}.`);
+  }
+  $('sel-delete').addEventListener('click', deleteSelected);
+  addEventListener('keydown', e => {
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+    if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+    if (!selected.size) return;
+    e.preventDefault();
+    deleteSelected();
+  });
+
+  // double-click a face -> face-edit: the face highlights and the next drag
+  // pulls it; releasing commits, Escape or a click elsewhere lets go
+  let faceEdit = false;
+  const mc = $('model-canvas');
+  const ndcOf = e => {
+    const r = mc.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+  };
+  mc.addEventListener('dblclick', e => {
+    if (!built || !model.state.masses?.length) return;
+    const [nx, ny] = ndcOf(e);
+    if (model.hoverFace(nx, ny)) {
+      faceEdit = true;
+      ui.toast('Face held — drag to push or pull it. Click empty space to let go.', 2600);
+    }
+  });
+  mc.addEventListener('pointerdown', e => {
+    if (!faceEdit) return;
+    const [nx, ny] = ndcOf(e);
+    if (model.beginFaceDrag(nx, ny)) {
+      const move = ev => { const [mx, my] = ndcOf(ev); model.moveFaceDrag(mx, my); };
+      const up = () => {
+        removeEventListener('pointermove', move);
+        removeEventListener('pointerup', up);
+        if (model.endFaceDrag() !== null) { refresh(); syncParams(); commitVersion('face pulled'); }
+        // one double-click, one pull — staying armed would swallow every
+        // later click on the canvas, selection included
+        faceEdit = false;
+        model.clearFaceHover();
+      };
+      addEventListener('pointermove', move);
+      addEventListener('pointerup', up);
+      e.stopPropagation();
+    } else {
+      faceEdit = false;
+      model.clearFaceHover();
+    }
+  }, true);
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape' && faceEdit) { faceEdit = false; model.clearFaceHover(); }
+  });
 
   // Rhino live-link: pick a folder once; every change writes napkin-live.3dm there.
   let liveDir = null, liveTimer = 0;

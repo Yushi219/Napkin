@@ -1563,6 +1563,42 @@ const _hit = new THREE.Vector3();
 // The gestures speak to the model through these three: an exploded axon, a
 // live section cut, and face-level push-pull on the quad cage.
 
+// ---- audit shells ----
+// The audit view's paint: a translucent shell in the finding's colour around
+// every volume with a problem, floating just proud of the faces so the model
+// stays readable underneath. Rebuilt whenever the audit reruns.
+let auditGroup = null;
+export function showAuditShells(worstByElement, colors) {
+  clearAuditShells();
+  if (!state.masses?.length) return;
+  auditGroup = new THREE.Group();
+  state.masses.forEach((m, i) => {
+    const sev = worstByElement[m.id];
+    if (!sev) return;
+    const mat = new THREE.MeshBasicMaterial({
+      color: colors[sev], transparent: true, opacity: sev === 'blocker' ? 0.4 : 0.3,
+      depthWrite: false,
+    });
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(m.w + 0.35, m.h + 0.35, m.d + 0.35), mat);
+    shell.position.set(m.x, m.y + m.h / 2, m.z);
+    shell.rotation.y = THREE.MathUtils.degToRad(m.rotY || 0);
+    auditGroup.add(shell);
+    const edge = new THREE.LineSegments(
+      new THREE.EdgesGeometry(shell.geometry),
+      new THREE.LineBasicMaterial({ color: colors[sev], transparent: true, opacity: 0.9 }));
+    edge.position.copy(shell.position);
+    edge.rotation.copy(shell.rotation);
+    auditGroup.add(edge);
+  });
+  scene.add(auditGroup);
+}
+export function clearAuditShells() {
+  if (!auditGroup) return;
+  scene.remove(auditGroup);
+  auditGroup.traverse(o => { o.geometry?.dispose(); o.material?.dispose?.(); });
+  auditGroup = null;
+}
+
 // ---- exploded axonometric ----
 // Two palms spreading apart lift the composition into its layers, the way an
 // exploded axon diagram reads. The offsets are a view transform on the groups;
