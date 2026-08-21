@@ -1042,18 +1042,18 @@ function applyPinnedSite(site) {
   }
   $('btn-landscape').textContent = '📍 ' + (site.region.city || site.region.label || 'site');
   const chip = $('site-chip');
-  chip.textContent = `📍 ${site.region.label || site.label} · ${site.buildings.length} neighbours · r${site.radius}m` + (site.weather ? ` · ${Math.round(site.weather.tempC)}°C` : '');
+  chip.textContent = `📍 ${site.region.label || site.label} · ${site.buildings.length} buildings · ${site.roads?.length || 0} streets · r${site.radius}m` + (site.weather ? ` · ${Math.round(site.weather.tempC)}°C` : '');
   chip.classList.remove('hidden');
   localStorage.setItem('napkin_real_site', JSON.stringify(site));
   refresh();
   syncSunControls();
-  ui.addChatMsg('ai', `Site pinned: ${site.label.split(',').slice(0, 2).join(',')}. ${site.buildings.length} measured neighbours from OpenStreetMap, ground from real elevations, ${site.weather ? 'live weather: ' + site.weather.sky : 'weather unavailable'}. Sun now runs at ${site.lat.toFixed(3)}, ${site.lon.toFixed(3)}.`);
+  ui.addChatMsg('ai', `Site pinned: ${site.label.split(',').slice(0, 2).join(',')}. From OpenStreetMap: ${site.buildings.length} buildings, ${site.roads?.length || 0} street segments, ${site.water?.length || 0} water features, ${site.green?.length || 0} green spaces${site.parcelLocal ? ' — your drawn parcel is cleared for the design' : ''}. Ground from real elevations, ${site.weather ? 'live weather: ' + site.weather.sky : 'weather unavailable'}, sun at ${site.lat.toFixed(3)}, ${site.lon.toFixed(3)}.`);
 }
 
 async function openSitePicker(hit) {
-  try { await loadLeaflet(); } catch (e) { ui.toast('Map library unreachable — pinning the address point directly.'); }
+  try { await loadLeaflet(); } catch (e) { ui.toast('Map library unreachable.'); return; }
   const L = window.L;
-  let lat = hit.lat, lon = hit.lon, radius = 220;
+  let radius = 220;
   ui.openModal(`
     <div class="modal-kicker">Project site</div>
     <div class="modal-title" style="font-size:18px">${hit.label.split(',').slice(0, 3).join(',')}</div>
@@ -1061,34 +1061,84 @@ async function openSitePicker(hit) {
     <div class="site-modal-row"><span>Context radius</span>
       <input id="site-radius" type="range" min="120" max="400" step="20" value="220" />
       <span id="site-radius-val" class="mono">220 m</span></div>
-    <div class="site-modal-row" style="color:var(--faint)">Click the map to move the parcel centre. Everything inside the ring becomes measured context.</div>
-    <button class="build-btn" id="site-pin" style="width:100%;margin-top:12px">Pin this site →</button>`);
-  let map = null, marker = null, ring = null;
-  if (L) {
-    map = L.map('site-map').setView([lat, lon], 16);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
-    }).addTo(map);
-    marker = L.marker([lat, lon]).addTo(map);
-    ring = L.circle([lat, lon], { radius, color: '#bd5f3d', weight: 2, fillOpacity: 0.08 }).addTo(map);
-    map.on('click', e => {
-      lat = e.latlng.lat; lon = e.latlng.lng;
-      marker.setLatLng(e.latlng); ring.setLatLng(e.latlng);
-    });
-  }
+    <div class="site-modal-row" id="site-instruction" style="color:var(--faint)">Draw the parcel: click its corners, then click the first corner again to close. Drag any corner to adjust. Double-click or right-click the map to start over.</div>
+    <button class="build-btn" id="site-pin" style="width:100%;margin-top:12px" disabled>Draw the parcel first</button>`);
+
+  const map = L.map('site-map', { doubleClickZoom: false }).setView([hit.lat, hit.lon], 17);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+  }).addTo(map);
+
+  // ---- the parcel, drawn corner by corner ----
+  let pts = [];            // L.LatLng, in click order
+  let markers = [];
+  let closed = false;
+  let outline = L.polyline([], { color: '#bd5f3d', weight: 2, dashArray: '5 5' }).addTo(map);
+  let fill = L.polygon([], { color: '#bd5f3d', weight: 2, fillOpacity: 0.12 }).addTo(map);
+  let ring = L.circle([hit.lat, hit.lon], { radius, color: '#7a9db5', weight: 1.5, fillOpacity: 0.03, dashArray: '2 6' }).addTo(map);
+
+  const centroid = () => {
+    if (!pts.length) return L.latLng(hit.lat, hit.lon);
+    return L.latLng(pts.reduce((a, p) => a + p.lat, 0) / pts.length, pts.reduce((a, p) => a + p.lng, 0) / pts.length);
+  };
+  const redraw = () => {
+    outline.setLatLngs(closed ? [] : pts);
+    fill.setLatLngs(closed ? pts : []);
+    ring.setLatLng(centroid());
+    const btn = $('site-pin');
+    btn.disabled = !closed;
+    btn.textContent = closed ? 'Pin this site →' : (pts.length ? `${pts.length} corner${pts.length > 1 ? 's' : ''} — close the loop to finish` : 'Draw the parcel first');
+  };
+  const addMarker = ll => {
+    const mk = L.marker(ll, { draggable: true, icon: L.divIcon({ className: 'parcel-pt', iconSize: [12, 12] }) }).addTo(map);
+    mk.on('drag', () => { pts[markers.indexOf(mk)] = mk.getLatLng(); redraw(); });
+    markers.push(mk);
+  };
+  const reset = () => {
+    pts = []; closed = false;
+    markers.forEach(m => map.removeLayer(m)); markers = [];
+    redraw();
+    $('site-instruction').textContent = 'Draw the parcel: click its corners, then click the first corner again to close. Drag any corner to adjust. Double-click or right-click the map to start over.';
+  };
+
+  map.on('click', e => {
+    if (closed) return;
+    // clicking the first corner again closes the loop
+    if (pts.length >= 3) {
+      const p0 = map.latLngToContainerPoint(pts[0]);
+      const pc = map.latLngToContainerPoint(e.latlng);
+      if (p0.distanceTo(pc) < 14) {
+        closed = true;
+        redraw();
+        $('site-instruction').textContent = 'Parcel closed. Drag corners to adjust; the buildings inside it will be cleared for your design. Double-click or right-click to redraw.';
+        return;
+      }
+    }
+    pts.push(e.latlng);
+    addMarker(e.latlng);
+    redraw();
+  });
+  map.on('dblclick', reset);
+  map.on('contextmenu', e => { e.originalEvent?.preventDefault?.(); reset(); });
+
   $('site-radius').addEventListener('input', e => {
     radius = +e.target.value;
     $('site-radius-val').textContent = radius + ' m';
-    if (ring) ring.setRadius(radius);
+    ring.setRadius(radius);
   });
+
   $('site-pin').addEventListener('click', async () => {
+    if (!closed) return;
     const btn = $('site-pin');
     btn.disabled = true;
     btn.textContent = 'Reading the site…';
+    const c = centroid();
     try {
-      const site = await siteData.assembleSite(
-        { lat, lon, radius, label: hit.label, address: hit.address },
-        step => { btn.textContent = step; });
+      const site = await siteData.assembleSite({
+        lat: c.lat, lon: c.lng, radius,
+        label: hit.label, address: hit.address,
+        parcel: pts.map(p => [p.lat, p.lng]),
+      }, step => { btn.textContent = step; });
       ui.closeModal();
       applyPinnedSite(site);
     } catch (e) {

@@ -25,7 +25,7 @@ export function setActiveSite(s) { activeSite = s; }
 
 export async function searchPlaces(q) {
   if (!q || q.trim().length < 2) return [];
-  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&q=' + encodeURIComponent(q.trim());
+  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&accept-language=en&q=' + encodeURIComponent(q.trim());
   const res = await fetch(url, { headers: { accept: 'application/json' } });
   if (!res.ok) throw new Error('place search ' + res.status);
   const rows = await res.json();
@@ -57,6 +57,77 @@ export function toLocal(lat, lon, lat0, lon0) {
 }
 
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+
+// point-in-polygon, local metres — the parcel test
+export function pointInPoly([px, pz], poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// A street is not a building. One Overpass round-trip brings back the whole
+// scene: buildings, the road network with its classes and bridges, water as
+// bodies and as rivers, and the green — parks, lawns, woods.
+const ROAD_W = {
+  motorway: 16, trunk: 14, primary: 12, secondary: 10, tertiary: 8,
+  residential: 6, unclassified: 6, living_street: 5, service: 4,
+  pedestrian: 3, footway: 2.2, cycleway: 2.5, path: 2,
+};
+
+export async function fetchContextFeatures(lat, lon, radius = 220) {
+  const key = `feat:${lat.toFixed(5)},${lon.toFixed(5)},${radius}`;
+  if (cache.has(key)) return cache.get(key);
+  const R = Math.round(radius);
+  const q = `[out:json][timeout:30];(
+    way[building](around:${R},${lat},${lon});
+    way[highway~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|footway|cycleway|path)$"](around:${R},${lat},${lon});
+    way[waterway~"^(river|stream|canal)$"](around:${R + 80},${lat},${lon});
+    way[natural=water](around:${R + 80},${lat},${lon});
+    way[leisure~"^(park|garden|pitch|playground|common)$"](around:${R},${lat},${lon});
+    way[landuse~"^(grass|forest|meadow|recreation_ground|cemetery|village_green)$"](around:${R},${lat},${lon});
+  );out geom 900;`;
+  let rows = null, lastErr = null;
+  for (const host of OVERPASS) {
+    try {
+      const res = await fetch(host, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+      if (!res.ok) { lastErr = new Error('overpass ' + res.status); continue; }
+      rows = (await res.json()).elements || [];
+      break;
+    } catch (e) { lastErr = e; }
+  }
+  if (!rows) throw lastErr || new Error('overpass unreachable');
+
+  const buildings = [], roads = [], water = [], green = [];
+  for (const w of rows) {
+    if (!w.geometry || w.geometry.length < 2) continue;
+    const pts = w.geometry.map(g => toLocal(g.lat, g.lon, lat, lon));
+    const t = w.tags || {};
+    if (t.building) {
+      if (pts.length < 3) continue;
+      let h = parseFloat(t.height);
+      if (!Number.isFinite(h)) {
+        const lv = parseFloat(t['building:levels']);
+        h = Number.isFinite(lv) ? lv * 3.2 : 8;
+      }
+      buildings.push({ poly: pts, h: Math.max(3, Math.min(320, h)), name: t.name || null });
+    } else if (t.highway) {
+      roads.push({ pts, w: ROAD_W[t.highway] || 5, bridge: t.bridge === 'yes' || !!t.bridge && t.bridge !== 'no', kind: t.highway });
+    } else if (t.waterway) {
+      roads; // keep linter quiet
+      water.push({ pts, line: true, w: Math.max(4, parseFloat(t.width) || (t.waterway === 'river' ? 20 : 5)) });
+    } else if (t.natural === 'water') {
+      if (pts.length >= 3) water.push({ poly: pts, line: false });
+    } else if (t.leisure || t.landuse) {
+      if (pts.length >= 3) green.push({ poly: pts });
+    }
+  }
+  const out = { buildings, roads: roads.slice(0, 260), water: water.slice(0, 80), green: green.slice(0, 120) };
+  cache.set(key, out);
+  return out;
+}
 
 export async function fetchContextBuildings(lat, lon, radius = 220) {
   const key = `ctx:${lat.toFixed(5)},${lon.toFixed(5)},${radius}`;
@@ -159,14 +230,16 @@ export async function fetchLiveWeather(lat, lon) {
 
 // ---------------- one call that gathers a whole site ----------------
 
-export async function assembleSite({ lat, lon, radius, label, address }, onStep) {
+// parcel: [[lat,lon]…] as drawn on the map; converted to local metres here
+export async function assembleSite({ lat, lon, radius, label, address, parcel }, onStep) {
   const region = regionOf(address);
-  onStep?.('Fetching the neighbours from OpenStreetMap…');
-  const buildings = await fetchContextBuildings(lat, lon, radius).catch(e => { console.warn('context failed', e); return []; });
-  onStep?.(`Found ${buildings.length} surrounding buildings. Reading the ground…`);
+  onStep?.('Fetching streets, water, parks and neighbours from OpenStreetMap…');
+  const features = await fetchContextFeatures(lat, lon, radius).catch(e => { console.warn('context failed', e); return { buildings: [], roads: [], water: [], green: [] }; });
+  onStep?.(`${features.buildings.length} buildings, ${features.roads.length} road segments. Reading the ground…`);
   const terrain = await fetchTerrainGrid(lat, lon, radius).catch(e => { console.warn('terrain failed', e); return null; });
   onStep?.('Asking the sky over the site…');
   const weather = await fetchLiveWeather(lat, lon).catch(e => { console.warn('weather failed', e); return null; });
-  activeSite = { lat, lon, radius, label, address, region, buildings, terrain, weather };
+  const parcelLocal = parcel?.length >= 3 ? parcel.map(([la, lo]) => toLocal(la, lo, lat, lon)) : null;
+  activeSite = { lat, lon, radius, label, address, region, ...features, terrain, weather, parcelLocal };
   return activeSite;
 }

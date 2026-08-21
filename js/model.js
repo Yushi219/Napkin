@@ -905,7 +905,6 @@ function realTerrainAt(x, z) {
 }
 
 function buildRealContext(mat, PAL, wood) {
-  // measured ground
   const R = Math.max(realSite.radius * 1.6, 260);
   groundMatRef = wood ? woodContextMaterial('ground')
     : new THREE.MeshStandardMaterial({ color: PAL.base, roughness: 1 });
@@ -920,13 +919,99 @@ function buildRealContext(mat, PAL, wood) {
   ground.receiveShadow = true;
   contextGroup.add(ground);
 
-  // the parcel disc
-  const plot = new THREE.Mesh(new THREE.CylinderGeometry(30, 31.5, 1.1, 40), mat(PAL.plot, 0.97));
-  plot.position.y = 0.2;
-  plot.receiveShadow = true;
-  contextGroup.add(plot);
+  const inParcel = pt => realSite.parcelLocal ? _pip(pt, realSite.parcelLocal) : Math.hypot(pt[0], pt[1]) < 34;
 
-  // measured neighbours: every OSM footprint extruded to its measured height
+  // ---- the parcel: the drawn polygon, cleared and levelled for the design ----
+  if (realSite.parcelLocal) {
+    try {
+      const sh = new THREE.Shape();
+      realSite.parcelLocal.forEach(([x, z], i) => i ? sh.lineTo(x, -z) : sh.moveTo(x, -z));
+      sh.closePath();
+      const plate = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.9, bevelEnabled: false }), mat(PAL.plot, 0.97));
+      plate.rotation.x = -Math.PI / 2;
+      plate.position.y = 0.05;
+      plate.receiveShadow = true;
+      contextGroup.add(plate);
+    } catch { /* degenerate parcel */ }
+  } else {
+    const plot = new THREE.Mesh(new THREE.CylinderGeometry(30, 31.5, 1.1, 40), mat(PAL.plot, 0.97));
+    plot.position.y = 0.2;
+    plot.receiveShadow = true;
+    contextGroup.add(plot);
+  }
+
+  // ---- green: parks, lawns, woods as soft plates ----
+  const greenMat = wood ? woodContextMaterial('leaf') : new THREE.MeshStandardMaterial({ color: 0xb2c096, roughness: 1 });
+  for (const g of realSite.green || []) {
+    try {
+      const sh = new THREE.Shape();
+      g.poly.forEach(([x, z], i) => i ? sh.lineTo(x, -z) : sh.moveTo(x, -z));
+      sh.closePath();
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), greenMat);
+      m.rotation.x = -Math.PI / 2;
+      const cgx = g.poly.reduce((a, q) => a + q[0], 0) / g.poly.length;
+      const cgz = g.poly.reduce((a, q) => a + q[1], 0) / g.poly.length;
+      m.position.y = realTerrainAt(cgx, cgz) + 0.12;
+      m.receiveShadow = true;
+      contextGroup.add(m);
+    } catch { /* skip */ }
+  }
+
+  // ---- water: bodies as plates, rivers as ribbons ----
+  const waterMat = wood ? woodContextMaterial('block') : new THREE.MeshStandardMaterial({ color: 0x9db8c6, roughness: 0.35, metalness: 0.1 });
+  for (const w of realSite.water || []) {
+    try {
+      if (w.line) {
+        addRibbon(w.pts, w.w, waterMat, () => 0.06, false);
+      } else {
+        const sh = new THREE.Shape();
+        w.poly.forEach(([x, z], i) => i ? sh.lineTo(x, -z) : sh.moveTo(x, -z));
+        sh.closePath();
+        const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), waterMat);
+        m.rotation.x = -Math.PI / 2;
+        m.position.y = 0.08;
+        contextGroup.add(m);
+      }
+    } catch { /* skip */ }
+  }
+
+  // ---- roads: real polylines at their real widths; bridges rise and carry piers ----
+  const roadMat = wood ? woodContextMaterial('ground') : new THREE.MeshStandardMaterial({ color: 0xa9a396, roughness: 0.98 });
+  const bridgeMat = wood ? woodContextMaterial('block') : new THREE.MeshStandardMaterial({ color: 0xb6b0a2, roughness: 0.9 });
+  const pierMat = wood ? woodContextMaterial('block') : new THREE.MeshStandardMaterial({ color: 0x9a9488, roughness: 0.95 });
+  for (const rd of realSite.roads || []) {
+    if (rd.bridge) {
+      addRibbon(rd.pts, rd.w, bridgeMat, () => 3.4, true, pierMat);
+    } else {
+      addRibbon(rd.pts, rd.w, roadMat, (x, z) => realTerrainAt(x, z) + 0.1, false);
+    }
+  }
+
+  function addRibbon(pts, width, material, liftAt, isBridge, piers) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x1, z1] = pts[i], [x2, z2] = pts[i + 1];
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      if (len < 0.5) continue;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, isBridge ? 0.6 : 0.18, width), material);
+      const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+      mesh.position.set(mx, liftAt(mx, mz) + (isBridge ? 0 : 0), mz);
+      mesh.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+      mesh.receiveShadow = true;
+      if (isBridge) mesh.castShadow = true;
+      contextGroup.add(mesh);
+      if (isBridge && piers && len > 10) {
+        for (const t of [0.3, 0.7]) {
+          const px = x1 + (x2 - x1) * t, pz = z1 + (z2 - z1) * t;
+          const pier = new THREE.Mesh(new THREE.BoxGeometry(1.2, 3.4, 1.2), piers);
+          pier.position.set(px, 1.7, pz);
+          pier.castShadow = true;
+          contextGroup.add(pier);
+        }
+      }
+    }
+  }
+
+  // ---- the neighbours: measured footprints, minus everything in the parcel ----
   const stock = wood ? null : [
     new THREE.MeshStandardMaterial({ color: 0xe3ded3, roughness: 0.92 }),
     new THREE.MeshStandardMaterial({ color: 0xd6d0c3, roughness: 0.92 }),
@@ -934,9 +1019,9 @@ function buildRealContext(mat, PAL, wood) {
   ];
   let bi = 0;
   for (const b of realSite.buildings || []) {
-    const cx = b.poly.reduce((a, p) => a + p[0], 0) / b.poly.length;
-    const cz = b.poly.reduce((a, p) => a + p[1], 0) / b.poly.length;
-    if (Math.hypot(cx, cz) < 34) continue;         // the parcel being designed
+    const cx = b.poly.reduce((a, q) => a + q[0], 0) / b.poly.length;
+    const cz = b.poly.reduce((a, q) => a + q[1], 0) / b.poly.length;
+    if (inParcel([cx, cz])) continue;              // the ground being designed
     try {
       const sh = new THREE.Shape();
       b.poly.forEach(([x, z], i) => i ? sh.lineTo(x, -z) : sh.moveTo(x, -z));
@@ -949,6 +1034,16 @@ function buildRealContext(mat, PAL, wood) {
       contextGroup.add(mesh);
     } catch { /* degenerate footprint */ }
   }
+}
+
+// local point-in-polygon (mirrors site.js — kept private to avoid a cycle)
+function _pip([px, pz], poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 function buildSiteContext() {
