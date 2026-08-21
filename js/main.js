@@ -157,6 +157,7 @@ function openProject(item, isUser) {
   clearSelection();
   // a reopened project keeps its identity, so further work updates it in place
   currentProjectId = isUser ? item.id : null;
+  rememberOpenProject(isUser ? item.id : null);
   projectName = isUser ? (item.name || '') : '';
   if ($('project-name')) $('project-name').value = projectName;
   localStorage.setItem('napkin_project_name', projectName);
@@ -229,12 +230,20 @@ function shrinkDataURL(url, maxEdge = 640, q = 0.72) {
   });
 }
 
+// A reload should land where you were working, not throw you back to the
+// napkin. The open project's id is remembered and reopened on boot.
+function rememberOpenProject(id) {
+  if (id) localStorage.setItem('napkin_open_project', id);
+  else localStorage.removeItem('napkin_open_project');
+}
+
 async function saveToGallery() {
   if (!model.state.masses?.length) return;
   const name = projectName
     || (model.state.reading || 'Untitled').split(/[,—.]/)[0].trim().replace(/^a /i, '').slice(0, 26)
     || 'Untitled';
   currentProjectId = currentProjectId || 'u' + Date.now();
+  rememberOpenProject(currentProjectId);
   const [photo, concept, render] = await Promise.all([
     shrinkDataURL(sketch.photoDataURL(900)),
     shrinkDataURL(conceptURL),
@@ -496,6 +505,12 @@ async function buildPasses() {
     model.setCameraAngle(pendingCamera.yawDeg, pendingCamera.pitchDeg, pendingCamera.fovDeg);
     model.frameBuilding(1.14);
     lastCamera = pendingCamera; pendingCamera = null;
+  }
+  // a pinned parcel is a real constraint: bring the massing onto the land it
+  // was drawn for, at a plausible site coverage, before anything else is judged
+  if (siteData.currentRealSite()?.parcelLocal) {
+    const f = model.scaleToSite(0.45);
+    if (f) ui.addChatMsg('ai', `Sized to your parcel \u2014 the footprint now covers about 45% of the land you drew (${Math.round(model.parcelAreaM2())} m\u00b2).`);
   }
   syncParams();
   commitVersion(versions.stream.commits.length ? `sketch v${versions.stream.commits.length + 1}` : 'first sketch');
@@ -1023,6 +1038,15 @@ const paramHooks = {
     else liveRebuild();
     return model.designedHeight();
   },
+  // Type the brief, the building resizes to meet it.
+  onScaleToArea(targetM2) {
+    const cur = compute(customTypeText).stats.gfa;
+    model.scaleToArea(targetM2, cur);
+    refresh(); syncParams();
+    const now = Math.round(compute(customTypeText).stats.gfa);
+    commitVersion(`scaled to ${now} m\u00b2`);
+    ui.toast(`Scaled to ${now} m\u00b2 gross floor area.`);
+  },
   onMassFacade(i, f) {
     if (!model.state.masses?.[i]) return;
     model.state.masses[i].facade = f;
@@ -1054,7 +1078,10 @@ const paramHooks = {
   },
 };
 
-function syncParams() { ui.renderParams(model.state, paramHooks); }
+function syncParams() {
+  try { model.state.__gfa = Math.round(compute(customTypeText).stats.gfa); } catch { /* pre-build */ }
+  ui.renderParams(model.state, paramHooks);
+}
 
 // ---------------- wiring ----------------
 
@@ -1072,12 +1099,19 @@ function syncSunControls() {
 let auditOn = false;
 let lastAudit = null;
 
+// the audit wants the parcel's measured area, which lives in the model
+function auditSite() {
+  const s = siteData.currentRealSite();
+  if (!s) return null;
+  return { ...s, parcelAreaM2: model.parcelAreaM2() };
+}
+
 function runAuditView() {
   if (!auditOn) return;
   const report = runAudit({
     masses: model.state.masses,
     metrics: compute(customTypeText),
-    site: siteData.currentRealSite(),
+    site: auditSite(),
   });
   model.showAuditShells(report.worstByElement, AUDIT_COLORS);
   model.showAuditMarkers(report.worstByElement, AUDIT_COLORS);
@@ -1094,7 +1128,7 @@ function runAuditView() {
 // ---------------- the review table ----------------
 // Three disciplines, seated, each with what they are responsible for. A
 // finding is something a person said, and saying it points at the model.
-const SEV_COL = { blocker: '#d4453a', major: '#d9b545', minor: '#4a9d5b' };
+const SEV_COL = { blocker: '#d4453a', major: '#d9b545', minor: '#4a9d5b', note: '#8a93a5' };
 
 function renderReviewTable(report) {
   const site = siteData.currentRealSite();
@@ -1315,7 +1349,9 @@ function renderRecentSites() {
 function applyPinnedSite(site) {
   model.setRealSiteData(site);
   setCustomSite(site.lat, site.lon, site.region.label || site.label, site.weather?.utcOffsetHours);
-  if (site.weather?.sky) {
+  // live weather is a deliberate choice, not the default: a project opens
+  // clear, and the sky only follows the site when it is asked to
+  if (site.weather?.sky && localStorage.getItem('napkin_live_weather') === '1') {
     model.setWeather(site.weather.sky);
     $('btn-weather').textContent = model.getWeather().label;
   }
@@ -1720,7 +1756,7 @@ function wire() {
     setTimeout(() => dispatchEvent(new Event('resize')), 60);
   });
 
-  $('btn-home').addEventListener('click', () => { currentProjectId = null; }, { capture: true });
+  $('btn-home').addEventListener('click', () => { currentProjectId = null; rememberOpenProject(null); }, { capture: true });
   $('btn-home').addEventListener('click', () => {
     document.body.classList.remove('workspace');
     document.body.classList.add('landing');
@@ -2134,6 +2170,17 @@ function wire() {
     const on = $('btn-spin').classList.toggle('active');
     model.toggleSpin(on);
   });
+  // reopen whatever was open when the page was last closed
+  try {
+    const openId = localStorage.getItem('napkin_open_project');
+    if (openId) {
+      const saved = (JSON.parse(localStorage.getItem('napkin_gallery_v1') || '[]') || [])
+        .find(x => x.id === openId);
+      if (saved) setTimeout(() => openProject(saved, true), 60);
+      else rememberOpenProject(null);
+    }
+  } catch { /* nothing to reopen */ }
+
   // ---- device adaptation ----
   document.querySelectorAll('#mobile-tabs button').forEach(b =>
     b.addEventListener('click', () => showPane(b.dataset.pane)));

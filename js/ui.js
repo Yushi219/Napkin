@@ -219,6 +219,9 @@ export function renderParams(state, hooks) {
         '<div class="prow"><label title="Scales every volume and position together">scale</label>' +
           '<input type="range" min="0.3" max="3" step="0.01" value="' + sc + '" id="mass-scale" />' +
           '<span class="pval" id="pv-scale">' + (Math.round(sc * 100) / 100) + '×</span></div>' +
+        '<div class="prow"><label title="Gross floor area \u2014 type the brief and the model resizes to meet it">GFA</label>' +
+          '<input type="number" id="mass-gfa" min="20" max="900000" step="10" value="' + Math.round(state.__gfa || 0) + '" />' +
+          '<span class="pval">m\u00b2</span></div>' +
         '<div class="pnote" id="scale-note">' + Math.round(tall) + ' m to the top</div>' +
         // Turning the building turns its facades into or away from the sun,
         // so this slider moves the energy line, not just the picture.
@@ -276,6 +279,16 @@ export function renderParams(state, hooks) {
       };
       orEl.addEventListener('input', () => showOrient(orEl.value, false));
       orEl.addEventListener('change', () => showOrient(orEl.value, true));
+    }
+
+    const gfaEl = p.querySelector('#mass-gfa');
+    if (gfaEl) {
+      const applyGfa = () => {
+        const target = +gfaEl.value;
+        if (target > 20) hooks.onScaleToArea?.(target);
+      };
+      gfaEl.addEventListener('change', applyGfa);
+      gfaEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyGfa(); } });
     }
 
     const scEl = p.querySelector('#mass-scale');

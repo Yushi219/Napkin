@@ -1660,3 +1660,13 @@ body.reviewing #audit-panel { width: auto; }
 .pdetail > summary::-webkit-details-marker { display: none; }
 .pdetail > summary:hover { border-color: var(--accent); color: var(--accent); }
 .pdetail[open] > summary { margin-bottom: 6px; }
+
+.prow input[type=number] {
+  width: 100%; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--ink); padding: 3px 7px; outline: none;
+}
+.prow input[type=number]:focus { border-color: var(--accent); }
+
+.rt-item.sev-note { border-left-color: #8a93a5; background: #f7f8fa; }
+.rt-item.sev-note .rt-issue { color: var(--ink-soft); }

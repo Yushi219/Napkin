@@ -10,7 +10,7 @@
 // HEURISTICS (span-to-depth, daylight depth; the real structure is unknown at
 // massing, so these are proportion advice, confidence ~0.5, and say so).
 
-export const AUDIT_COLORS = { blocker: 0xd4453a, major: 0xe08a3c, minor: 0xd9b545 };
+export const AUDIT_COLORS = { blocker: 0xd4453a, major: 0xe08a3c, minor: 0xd9b545, note: 0x8a93a5 };
 
 const CONTACT_GAP = 0.12;      // m — a seam this fine is a joint, not a gap
 
@@ -124,6 +124,13 @@ function allChecks(masses, metrics, site) {
           'Support was traced element by element and never reached grade — whatever holds this up is itself unsupported. Rigid-body fact.', 1.0, 2);
         continue;
       }
+      // a void carries nothing: it is subtracted material
+      if (it.carriers.every(c => byId.get(c.id)?.kind === 'void')) {
+        f('void-support', 'blocker', 'structure', m.id,
+          'the only thing under it is a void',
+          'land it on a solid, or fill the void beneath it',
+          'A void is subtracted material — an absence cannot bear load. Rigid-body fact.', 1.0, 2);
+      }
       // resultant off the support: the check that actually distinguishes a
       // buildable overhang from an unbuildable one (replaces the old
       // contact-area complaint, which merely described cantilevers)
@@ -158,7 +165,10 @@ function allChecks(masses, metrics, site) {
       }
     }
 
-    if (tier === 'detail') continue;   // texture answers only for floating
+    // Texture is exempt from structural proportion rules; a canopy or a
+    // cantilevered slab is not — those are the elements that most often float
+    // in a reading, and they are exactly what a reviewer would query.
+    if (tier === 'detail') continue;
 
     // ---- habitability facts and heuristics: primary volumes ----
     if (tier === 'primary' && m.kind === 'volume') {
@@ -240,6 +250,72 @@ function allChecks(masses, metrics, site) {
     }
   }
 
+  // ---- what a reviewer would raise, beyond errors ----
+  // The point of a review is not a clean bill of health; it is perspective.
+  // These read the scheme as a whole and say what is true about it, whether or
+  // not it is a fault.
+  const prim = solids.filter(m => tierOf(m) === 'primary' && m.kind === 'volume');
+  if (prim.length) {
+    const top = Math.max(...solids.map(m => m.y + m.h));
+    const xs = solids.flatMap(m => [m.x - m.w / 2, m.x + m.w / 2]);
+    const zs = solids.flatMap(m => [m.z - m.d / 2, m.z + m.d / 2]);
+    const foot = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...zs) - Math.min(...zs));
+    let gfa = 0, envelope = 0, vol = 0, glazed = 0;
+    for (const m of prim) {
+      const st = m.storeys || Math.max(1, Math.round(m.h / 3.4));
+      gfa += m.w * m.d * st;
+      envelope += 2 * (m.w + m.d) * m.h + m.w * m.d;
+      vol += m.w * m.d * m.h;
+      if (m.facade === 'glass') glazed += 2 * (m.w + m.d) * m.h;
+    }
+
+    // compactness — the single number behind both heating and cooling load
+    const sv = envelope / Math.max(1, vol);
+    if (sv > 0.55) {
+      f('compact', 'major', 'climate', 'building',
+        `surface-to-volume ${sv.toFixed(2)} — a very exposed form`,
+        'fewer, deeper volumes, or accept the envelope cost',
+        `Every m² of skin is heat lost in winter and gained in summer. Compact blocks sit near 0.25\u20130.35 m\u207b\u00b9; above ~0.55 the envelope dominates the energy result no matter how good the glazing spec is. Heuristic, but it is the number that governs.`, 0.7, 3);
+    } else if (sv > 0.4) {
+      f('compact', 'minor', 'climate', 'building',
+        `surface-to-volume ${sv.toFixed(2)}`,
+        'watch the envelope spec, or consolidate the volumes',
+        'Moderately articulated form: more skin than a simple block, which shows up in both the heating and cooling loads. Heuristic.', 0.7, 2);
+    }
+
+    // glazing share — the cheapest lever on the energy line
+    const glazeShare = envelope > 0 ? glazed / envelope : 0;
+    if (glazeShare > 0.55) {
+      f('glazing', 'major', 'climate', 'building',
+        `about ${(glazeShare * 100).toFixed(0)}% of the envelope is fully glazed`,
+        'move a volume or two to slats-v or solid',
+        `Fully-glazed volumes make up most of the skin here. Beyond roughly half, glazing drives cooling load and glare faster than any other massing decision, and it is the cheapest thing to change at this stage. Heuristic.`, 0.7, 2);
+    }
+
+    // plot ratio, when there is a real parcel to measure against
+    if (site?.parcelAreaM2 > 10) {
+      const far = gfa / site.parcelAreaM2;
+      const cover = foot / site.parcelAreaM2;
+      if (cover > 0.7) {
+        f('coverage', 'major', 'code', 'building',
+          `the building covers about ${(cover * 100).toFixed(0)}% of the parcel you drew`,
+          'pull the footprint in, or extend the parcel',
+          `Site coverage over ~70% leaves almost no room for setbacks, servicing, fire access or landscape, all of which most jurisdictions require. Measured against your own drawn parcel.`, 0.8, 4);
+      }
+      f('far', 'note', 'code', 'building',
+        `plot ratio ${far.toFixed(2)} \u2014 ${Math.round(gfa)} m\u00b2 on ${Math.round(site.parcelAreaM2)} m\u00b2 of land`,
+        'check this against the zoning for the district',
+        `Gross floor area divided by parcel area, both measured from your model and your drawn boundary. This is the number a planning department opens the file with; it is not a fault, it is the fact the whole application turns on.`, 0.9, 0);
+    }
+
+    // storeys and floor-to-floor, as an observation
+    const totalStoreys = prim.reduce((a, m) => Math.max(a, (m.storeys || 1) + Math.round(m.y / 3.4)), 0);
+    f('summary', 'note', 'structure', 'building',
+      `${prim.length} primary mass${prim.length > 1 ? 'es' : ''}, ${totalStoreys} storey${totalStoreys > 1 ? 's' : ''}, ${top.toFixed(1)} m to the top, ${Math.round(gfa)} m\u00b2 gross`,
+      '',
+      `What the model actually contains, measured rather than assumed \u2014 the starting point for every other reading on this page.`, 1.0, 0);
+  }
+
   // ---- climate: unchanged benchmarks ----
   if (metrics) {
     const carbon = +metrics.carbon || 0, energy = +metrics.eui || 0;
@@ -298,14 +374,16 @@ function groupAndRank(findings, masses) {
     });
   }
 
-  const rank = { blocker: 0, major: 1, minor: 2 };
+  const rank = { blocker: 0, major: 1, minor: 2, note: 3 };
   for (const x of out) {
     const lf = mfrac.get(x.where) ?? 0.15;
     x.priority = (x.cost || 2) * (0.3 + 0.7 * lf) * (x.conf || 0.6) * (3 - rank[x.severity]);
   }
-  out.sort((a, b) => b.priority - a.priority || rank[a.severity] - rank[b.severity]);
+  // notes always sit below findings, however interesting they are
+  out.sort((a, b) => (rank[a.severity] > 2) - (rank[b.severity] > 2)
+    || b.priority - a.priority || rank[a.severity] - rank[b.severity]);
   // the primary view holds a handful of decisions; the rest fold away
-  out.forEach((x, i) => { x.folded = i >= 7; });
+  out.forEach((x, i) => { x.folded = i >= 7 && x.severity !== 'note'; });
   return out;
 }
 
@@ -314,13 +392,13 @@ function groupAndRank(findings, masses) {
 export const REVIEWERS = [
   { id: 'structure', name: 'Priya', role: 'Structural engineer',
     domains: ['structure'], accent: '#c1553f',
-    quiet: 'It stands up. Nothing here needs a transfer or a truss.' },
+    quiet: 'It stands up \u2014 every mass reaches the ground and nothing needs a transfer. At this stage that is all the geometry can tell you; spans and depths are still guesses.' },
   { id: 'planner', name: 'Marcus', role: 'Planning officer',
     domains: ['code'], accent: '#4a6fa5',
-    quiet: 'Nothing that would stop a planning submission on massing grounds.' },
+    quiet: 'Nothing here would stop a planning submission on massing grounds. Height, plate depth and travel distances all sit inside the usual limits.' },
   { id: 'sustainability', name: 'Lena', role: 'Sustainability lead',
     domains: ['climate'], accent: '#4a9d5b',
-    quiet: 'Carbon and energy both sit inside the benchmarks for this type.' },
+    quiet: 'Carbon, energy, compactness and glazing all sit inside the benchmarks for this type.' },
 ];
 
 export const FACES = {
@@ -386,7 +464,7 @@ export function optimisationAdvice(findings, masses, metrics) {
           : `Compactness governs here: fewer, deeper volumes lower the surface-to-volume ratio.` });
     }
   }
-  const rank = { blocker: 0, major: 1, minor: 2 };
+  const rank = { blocker: 0, major: 1, minor: 2, note: 3 };
   out.sort((a, b) => rank[a.severity] - rank[b.severity]);
   return out.slice(0, 6);
 }
@@ -396,12 +474,12 @@ export function optimisationAdvice(findings, masses, metrics) {
 export function runAudit({ masses, metrics, site }) {
   const raw = allChecks(masses, metrics, site);
   const findings = groupAndRank(raw, masses);
-  const counts = { blocker: 0, major: 0, minor: 0 };
+  const counts = { blocker: 0, major: 0, minor: 0, note: 0 };
   for (const x of findings) counts[x.severity]++;
-  const rank = { blocker: 0, major: 1, minor: 2 };
+  const rank = { blocker: 0, major: 1, minor: 2, note: 3 };
   const worstByElement = {};
   for (const x of findings) {
-    if (x.where === 'building') continue;
+    if (x.where === 'building' || x.severity === 'note') continue;
     if (!(x.where in worstByElement) || rank[x.severity] < rank[worstByElement[x.where]]) worstByElement[x.where] = x.severity;
   }
   const table = REVIEWERS.map(r => ({

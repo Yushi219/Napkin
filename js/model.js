@@ -61,6 +61,49 @@ export function captureMassBase() {
   state.massScale = 1;
 }
 export function massScale() { return state.massScale || 1; }
+
+// Scale to a target floor area. An architect knows the brief in square feet
+// long before they know a building's width in metres, so this is the number
+// worth typing: solve for the factor that makes the gross floor area land.
+export function scaleToArea(targetM2, currentM2) {
+  if (!(targetM2 > 0) || !(currentM2 > 0)) return massScale();
+  // area goes as the square of a linear scale
+  const f = massScale() * Math.sqrt(targetM2 / currentM2);
+  return scaleMasses(f);
+}
+
+// The parcel is the other honest anchor: a building should sit inside the land
+// it was drawn on. Returns the factor that brings its footprint to `coverage`
+// of the parcel, or null when there is no parcel to measure against.
+export function scaleToSite(coverage = 0.45) {
+  const p = realSite?.parcelLocal;
+  if (!p?.length || !state.masses?.length) return null;
+  let area = 0;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    area += (p[j][0] + p[i][0]) * (p[j][1] - p[i][1]);
+  }
+  const parcelArea = Math.abs(area / 2);
+  if (!(parcelArea > 1)) return null;
+  const foot = designedFootprintArea();
+  if (!(foot > 1)) return null;
+  return scaleMasses(massScale() * Math.sqrt((parcelArea * coverage) / foot));
+}
+
+// plan area actually occupied, ignoring texture
+function designedFootprintArea() {
+  const solids = (state.masses || []).filter(m => m.kind !== 'void' && (m.tier || 'primary') !== 'detail');
+  if (!solids.length) return 0;
+  const xs = solids.flatMap(m => [m.x - m.w / 2, m.x + m.w / 2]);
+  const zs = solids.flatMap(m => [m.z - m.d / 2, m.z + m.d / 2]);
+  return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...zs) - Math.min(...zs));
+}
+export function parcelAreaM2() {
+  const p = realSite?.parcelLocal;
+  if (!p?.length) return null;
+  let area = 0;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) area += (p[j][0] + p[i][0]) * (p[j][1] - p[i][1]);
+  return Math.abs(area / 2);
+}
 export function scaleMasses(factor) {
   if (!Array.isArray(state.masses) || !Array.isArray(state.massBase)) return 1;
   const f = Math.max(0.2, Math.min(6, +factor || 1));
@@ -1514,7 +1557,7 @@ export const WEATHER = {
 };
 export const WEATHER_ORDER = ['clear','scattered','cirrus','overcast','shower','storm','snow','fog','golden','night'];
 
-let weatherKey = 'scattered';
+let weatherKey = 'clear';        // a project opens on a clear day
 let particles = null, particleKind = null;
 
 export function getWeather() { return Object.assign({ key: weatherKey }, WEATHER[weatherKey]); }
