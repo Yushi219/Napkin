@@ -491,12 +491,16 @@ function scheduleSelfCheck(targetURL) {
   setTimeout(async () => {
     const note = ui.addChatMsg('ai', 'Self-check \u2014 comparing the model against your sketch in the background\u2026', 'busy');
     const io = { snapshot: () => model.modelSnapshot(1000, { isolate: true }) };
+    const auditNow = () => runAudit({
+      masses: model.state.masses, metrics: compute(customTypeText), site: siteData.currentRealSite(),
+    }).findings;
     let applied = 0;
     try {
       // Two rounds, because the first correction usually reveals the next one \u2014
       // and none of this time is waited on: the model is already on screen.
       for (let round = 1; round <= 2; round++) {
         const before = JSON.stringify(model.state.masses);
+        io.auditFindings = auditNow();
         const r = await quickCorrect(targetURL, model.state.masses, lastCamera, io);
         if (!r) break;
         if (JSON.stringify(model.state.masses) !== before) {
@@ -511,9 +515,10 @@ function scheduleSelfCheck(targetURL) {
         note.textContent = `Self-check pass ${round} applied \u2014 looking again\u2026`;
       }
       note.classList.remove('busy');
+      const left = auditNow().filter(x => x.severity !== 'minor').length;
       note.textContent = applied
-        ? `\u27f2 Self-checked against the sketch \u2014 ${applied} correction${applied > 1 ? 's' : ''} applied.`
-        : '\u2713 Self-check passed \u2014 the model matches the sketch.';
+        ? `⟲ Self-checked against the sketch and the structural audit — ${applied} correction${applied > 1 ? 's' : ''} applied` + (left ? `, ${left} finding${left > 1 ? 's' : ''} left in Audit.` : ', audit clean.')
+        : (left ? `✓ Matches the sketch — ${left} structural finding${left > 1 ? 's' : ''} to see in Audit.` : '✓ Self-check passed — matches the sketch, audit clean.');
     } catch (e) { note.remove(); }
   }, 400);
 }

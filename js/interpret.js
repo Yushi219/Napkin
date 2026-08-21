@@ -394,6 +394,9 @@ export function sanitizeMasses(arr) {
     partOf: typeof m.partOf === 'string' ? m.partOf.slice(0, 24) : null,
     storeys: Number.isFinite(+m.storeys) ? Math.round(+m.storeys) : null,
     level: Number.isFinite(+m.level) ? Math.max(0, Math.round(+m.level)) : null,
+    repeat: (r => r && ['x', 'y', 'z'].includes(r.axis) && +r.count >= 2 && +r.step > 0
+      ? { axis: r.axis, count: Math.min(60, Math.round(+r.count)), step: cl(r.step, 0.15, 20, 1) }
+      : null)(m.repeat),
     };
   }).filter(m => m.w >= 0.08 && m.d >= 0.08 && m.h >= 0.08);
   return out.length ? snapMasses(out) : null;
@@ -769,6 +772,16 @@ export const MASS_SCHEMA = {
     partOf: { type: ['string', 'null'] },
     storeys: { type: ['integer', 'null'], minimum: 1, maximum: 80 },
     level: { type: ['integer', 'null'], minimum: 0, maximum: 80 },
+    repeat: {
+      type: ['object', 'null'],
+      description: 'array this element: fins, louvres, columns, floor bands. ONE declaration becomes count pieces.',
+      properties: {
+        axis: { type: 'string', enum: ['x', 'y', 'z'] },
+        count: { type: 'integer', minimum: 2, maximum: 60 },
+        step: { type: 'number', minimum: 0.15, maximum: 20, description: 'centre-to-centre spacing in metres' },
+      },
+      required: ['axis', 'count', 'step'],
+    },
   },
   required: ['id', 'kind', 'role', 'w', 'd', 'h', 'x', 'y', 'z', 'rotY', 'facade', 'cantilever', 'on', 'flush', 'partOf', 'storeys', 'level'],
 };

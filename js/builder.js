@@ -69,7 +69,11 @@ const FAST_BRIEF = `Replicate the building in this drawing as boxes, faithfully 
 
 EVIDENCE. You are given the whole drawing plus enlarged halves. Count storey lines, mullions, slats, railings and doors in the enlargements - a counted line beats an impression. Detail the drawing shows and the boxes lack is the most common failure here: secondary volumes, canopies, recessed voids, open frames.
 
-RULES. Metres; y up, ground y=0; front facade faces +z; x right; a box occupies x±w/2, z±d/2, y to y+h. kind=volume|slab|member; members 0.08-0.6 m thick for posts, beams and frames — an opening or roofless frame is built open, never a filled box. Every elevated element names its true support in "on" (cantilevers included); touching elements share coordinates exactly. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5; h = storeys × that. State the envelope first in your head and make the boxes fill it. Camera: yawDeg 0 faces the front, positive walks right; pitchDeg above horizon.`;
+RULES. Metres; y up, ground y=0; front facade faces +z; x right; a box occupies x±w/2, z±d/2, y to y+h. kind=volume|slab|member; members 0.08-0.6 m thick for posts, beams and frames — an opening or roofless frame is built open, never a filled box. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5; h = storeys × that. State the envelope first in your head and make the boxes fill it. Camera: yawDeg 0 faces the front, positive walks right; pitchDeg above horizon.
+
+ASSEMBLIES — this is what makes a reading read. Anything the drawing repeats is declared ONCE with "repeat": {axis, count, step}, never stamped out by hand. A slatted screen is one 0.2 m fin repeated 24 times at 0.9 m along x. A colonnade is one 0.4 m post repeated 6 times. Floor bands, louvres, mullions, balustrades, piers — all repeats. Count them off the drawing and give the real count and the real spacing; a screen with the wrong rhythm reads wrong even at the right size.
+
+STATICS — the model must stand up, and it is checked. Every elevated element names its true support in "on"; touching elements share coordinates exactly. A volume needs at least 40% of its plan bearing on its support, or it is a cantilever and must say so AND be no deeper than a third of the supported span. A member never carries a volume — if a canopy or slab is held up, it rests on posts or on a volume, and the posts stand on the ground or on a slab. Nothing floats.`;
 
 export async function fastBuild(rawTargetURL, io) {
   if (!hasClaude()) return null;
@@ -121,12 +125,20 @@ export async function quickCorrect(targetURL, masses, camera, io) {
   const shot = await io.snapshot();
   const pair = (await pairPicture(targetURL, shot)) || (await claudeImage(shot));
   const geo = geometryAudit(masses);
+  // The structural audit rides along: the same pass that makes it look right
+  // makes it stand up, instead of leaving the user to find both separately.
+  const flagged = (io.auditFindings || []).filter(x => x.severity !== 'minor');
+  const auditText = flagged.length
+    ? '\n\nThe structural and code audit on this scene reports:\n'
+      + flagged.map(x => `- [${x.severity}] ${x.domain}/${x.where}: ${x.issue} → ${x.fix}`).join('\n')
+      + '\nFix these too, without losing the likeness.'
+    : '';
   const out = await claudeToolCall({
-    system: 'You correct a box reconstruction against its reference drawing. Left pane: the drawing. Right pane: the current model. Return the COMPLETE corrected masses array — every element, changed or not. If the model already reads as the same building, return masses: [].',
+    system: 'You correct a box reconstruction against its reference drawing. Left pane: the drawing. Right pane: the current model. Return the COMPLETE corrected masses array — every element, changed or not, preserving the repeat block on any element that has one. If the model already reads as the same building AND the audit is quiet, return masses: [].',
     content: [
       { type: 'text', text: 'Current scene: ' + JSON.stringify(masses) + '\n' + geo.summary },
       pair,
-      { type: 'text', text: 'Judge relations, storey counts, openings, silhouette proportion, camera. Correct what is wrong.' },
+      { type: 'text', text: 'Judge relations, storey counts, repeated rhythms, openings, silhouette proportion, camera — then the structure. Correct what is wrong.' },
     ],
     tool: CORRECT_TOOL, maxTokens: 5000, model: claudeConfig().reviewerModel,
   }, 'self-check');

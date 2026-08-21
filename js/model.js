@@ -159,7 +159,7 @@ export function towerStats() {
   if (state.masses?.length) {
     let gfa = 0, facade = 0, height = 0, minPlanTall = 1e9, tallH = 0;
     let bbW = 0, bbD = 0, plateDepth = 0, plateArea = 0;
-    for (const m of state.masses) {
+    for (const m of expandedMasses()) {
       const occupied = m.kind !== 'member' && !['beam', 'column', 'post', 'frame', 'screen', 'railing', 'canopy', 'roof'].includes(m.role);
       const floors = m.storeys || Math.max(1, Math.round(m.h / state.floorHeight));
       if (occupied) {
@@ -2105,14 +2105,37 @@ let detailLevel = 'floors';
 export function setDetail(d) { if (DETAILS.includes(d)) detailLevel = d; }
 export function getDetail() { return detailLevel; }
 
+// An arrayed element — a screen of fins, a run of columns, a stack of floor
+// bands — is authored ONCE and drawn many times. This is what lets a reading
+// say "24 blades at 0.9 m" instead of stamping out 24 numb boxes: the model
+// reads like the drawing, and the parameter desk keeps one row with a count.
+export function expandedMasses() {
+  const out = [];
+  for (const m of state.masses || []) {
+    if (!m.repeat) { out.push(m); continue; }
+    const { axis, count, step } = m.repeat;
+    const span = (count - 1) * step;
+    for (let i = 0; i < count; i++) {
+      const off = i * step - span / 2;
+      out.push({ ...m, repeat: null,
+        id: `${m.id}-${i + 1}`,
+        x: m.x + (axis === 'x' ? off : 0),
+        y: m.y + (axis === 'y' ? off : 0),
+        z: m.z + (axis === 'z' ? off : 0) });
+    }
+  }
+  return out;
+}
+
 function buildMasses() {
   massGroups = [];
   const fh = state.floorHeight;
   const finBatch = [];
+  const pieces = expandedMasses();
 
-  state.masses.forEach((ms, mi) => {
+  pieces.forEach((ms, mi) => {
     const grp = new THREE.Group();
-    grp.userData.massIndex = mi;
+    grp.userData.massIndex = Math.max(0, (state.masses || []).findIndex(a => a.id === String(ms.id).replace(/-\d+$/, '') || a.id === ms.id));
     const isGlass = ms.facade === 'glass';
     const bodyMat = isGlass ? MAT.glass : MAT.clay;
     const floors = ms.storeys || Math.max(1, Math.round(ms.h / fh));
@@ -2457,7 +2480,7 @@ export async function rhinoBytes(paramsJson, brief) {
   // (x, y, z) -> (x, -z, y).
   let solids = 0;
   if (state.masses?.length) {
-    for (const m of state.masses) {
+    for (const m of expandedMasses()) {
       try {
         const hw = m.w / 2, hd = m.d / 2;
         const a = THREE.MathUtils.degToRad(m.rotY || 0);
@@ -2529,7 +2552,7 @@ export async function rhinoBytes(paramsJson, brief) {
 // a slider can drive.
 export function exportGrasshopper() {
   if (!state.masses?.length) return false;
-  const rows = state.masses.map(m => '    ' + JSON.stringify({
+  const rows = expandedMasses().map(m => '    ' + JSON.stringify({
     id: m.id, role: m.role || 'volume', kind: m.kind || 'volume',
     w: m.w, d: m.d, h: m.h, x: m.x, y: m.y, z: m.z, rotY: m.rotY || 0,
     on: m.on || 'ground', facade: m.facade || 'solid',
@@ -2610,7 +2633,7 @@ export function exportCageObj() {
   if (!state.masses?.length) return false;
   const L = ['# NAPKIN quad control cage — ToSubD in Rhino to sculpt', '# y-up metres'];
   let base = 1;
-  for (const m of state.masses) {
+  for (const m of expandedMasses()) {
     const hw = m.w / 2, hd = m.d / 2;
     const a = THREE.MathUtils.degToRad(m.rotY || 0);
     const ca = Math.cos(a), sa = Math.sin(a);
