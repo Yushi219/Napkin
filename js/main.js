@@ -28,6 +28,9 @@ const ICON = {
 };
 
 let built = false;
+// view-mode flags live here because onPickMass, declared far above their
+// panels, has to know whether Edit is showing
+let editOn = false;
 let styleId = 'photo';
 let refDataURL = null;
 let autoRenderTimer = 0;
@@ -47,9 +50,18 @@ function setViewMode(mode) {
   if (mode === 'render') {
     if (!lastRenderURL) { ui.addChatMsg('ai', 'No render yet — type what you want and press Render ✦.'); }
     layer.classList.toggle('hidden', !lastRenderURL);
+  } else if (mode === 'edit') {
+    layer.classList.add('hidden');
+    setCompare(false);
+    setAuditMode(false);
+    model.setModelMode('white');
+    model.rebuild();
+    setEditMode(true);
+    if (selected.size) model.setSelection([...selected]);
   } else if (mode === 'audit') {
     layer.classList.add('hidden');
     setCompare(false);
+    setEditMode(false);
     model.setModelMode('white');
     model.rebuild();
     setAuditMode(true);
@@ -58,6 +70,7 @@ function setViewMode(mode) {
     layer.classList.add('hidden');
     setCompare(false);
     setAuditMode(false);
+    setEditMode(false);
     model.setModelMode(mode);
     model.rebuild();
     if (selected.size) model.setSelection([...selected]);
@@ -570,10 +583,16 @@ function clearSelection() {
 }
 
 function onPickMass(idx) {
-  if (idx === null || idx === undefined) { clearSelection(); return; }
+  if (idx === null || idx === undefined) { clearSelection(); model.clearGizmo(); return; }
   if (selected.has(idx)) selected.delete(idx);
   else selected.add(idx);
   model.setSelection([...selected]);
+  // in Edit the selection carries its three axes; one volume at a time, since
+  // a gizmo for a set would have no single centre to sit on
+  if (editOn) {
+    if (selected.size === 1) model.showGizmo([...selected][0]);
+    else model.clearGizmo();
+  }
   const roles = [...selected].map(i => model.state.masses?.[i]?.role || `#${i}`);
   $('sel-chips').innerHTML = roles.map(r => `<span class="sel-chip">${r}</span>`).join('');
   $('sel-bar').classList.toggle('hidden', !roles.length);
@@ -980,6 +999,7 @@ function syncSunControls() {
 // Structure, code and climate findings painted straight onto the model, and
 // re-run every time the model changes while the view is open.
 let auditOn = false;
+let lastAudit = null;
 
 function runAuditView() {
   if (!auditOn) return;
@@ -989,28 +1009,37 @@ function runAuditView() {
     site: siteData.currentRealSite(),
   });
   model.showAuditShells(report.worstByElement, AUDIT_COLORS);
+  model.showAuditMarkers(report.worstByElement, AUDIT_COLORS);
+  lastAudit = report;
   const head = $('audit-head'), list = $('audit-list');
   head.innerHTML = `
-    <span class="ac"><span class="dot" style="background:#d4453a"></span>${report.counts.blocker}</span>
-    <span class="ac"><span class="dot" style="background:#e08a3c"></span>${report.counts.major}</span>
-    <span class="ac"><span class="dot" style="background:#d9b545"></span>${report.counts.minor}</span>
+    <span class="ac" title="Blockers — the scheme has a problem to resolve before it goes further: no load path, nothing meeting the ground, a support that does not exist."><span class="dot" style="background:#d4453a"></span>${report.counts.blocker}</span>
+    <span class="ac" title="Warnings — clearly visible deviations that change the design: deep cantilevers, thin bearing, plan depths past daylight and egress, carbon or energy over benchmark."><span class="dot" style="background:#d9b545"></span>${report.counts.major}</span>
+    <span class="ac" title="Notes — worth knowing, not blocking: mild overlaps, heights worth checking against the district plan, numbers a little over target."><span class="dot" style="background:#4a9d5b"></span>${report.counts.minor}</span>
     <span style="margin-left:auto;color:var(--muted);font-weight:400">${siteData.currentRealSite() ? '📍 ' + (siteData.currentRealSite().region.label || 'site') : 'no site pinned'}</span>`;
   if (!report.findings.length) {
     list.innerHTML = '<div class="audit-clean">Nothing flagged. Structure stands, plans daylight, carbon inside the benchmark.</div>';
     return;
   }
   list.innerHTML = report.findings.map((x, i) => `
-    <div class="audit-item sev-${x.severity}" data-where="${x.where}">
+    <div class="audit-item sev-${x.severity}" data-where="${x.where}" data-i="${i}">
       <div class="bar"></div>
       <div>
         <div class="ai-where">${x.domain} · ${x.where}</div>
         <div class="ai-issue">${x.issue}</div>
         ${x.fix ? `<div class="ai-fix">→ ${x.fix}</div>` : ''}
+        ${x.why ? `<div class="ai-more">click for the reasoning</div><div class="ai-why">${x.why}</div>` : ''}
       </div>
     </div>`).join('');
   list.querySelectorAll('.audit-item').forEach(el => el.addEventListener('click', () => {
+    // open the evidence, and make the model point back at itself
+    list.querySelectorAll('.audit-item.open').forEach(o => { if (o !== el) o.classList.remove('open'); });
+    el.classList.toggle('open');
+    const more = el.querySelector('.ai-more');
+    if (more) more.textContent = el.classList.contains('open') ? 'click to close' : 'click for the reasoning';
     const idx = model.state.masses?.findIndex(m => m.id === el.dataset.where);
-    if (idx >= 0) { model.setSelection([idx]); }
+    if (idx >= 0) model.setSelection([idx]);
+    model.flashAudit(el.dataset.where);
   }));
 }
 
@@ -1018,7 +1047,71 @@ function setAuditMode(on) {
   auditOn = on;
   $('audit-panel').classList.toggle('hidden', !on);
   if (on) runAuditView();
-  else model.clearAuditShells();
+  else { model.clearAuditShells(); model.clearAuditMarkers(); }
+}
+
+// clicking a glowing marker in the model opens and flashes its finding
+function auditMarkerClick(nx, ny) {
+  const id = model.markerAt(nx, ny);
+  if (!id) return false;
+  const el = $('audit-list').querySelector(`.audit-item[data-where="${CSS.escape(id)}"]`);
+  if (el) {
+    $('audit-list').querySelectorAll('.audit-item.open').forEach(o => o.classList.remove('open'));
+    el.classList.add('open');
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  const idx = model.state.masses?.findIndex(m => m.id === id);
+  if (idx >= 0) model.setSelection([idx]);
+  model.flashAudit(id);
+  return true;
+}
+
+// ---------------- edit mode ----------------
+// Rhino's habits, minus its learning curve: click selects and raises three
+// axes, drag an axis to slide, double-click a face to push or pull it, Delete
+// removes, Ctrl+Z steps back. Every commit re-runs metrics, params and audit.
+const undoStack = [], redoStack = [];
+
+function snapMasses() { return JSON.stringify(model.state.masses || []); }
+function pushUndo() {
+  undoStack.push(snapMasses());
+  if (undoStack.length > 40) undoStack.shift();
+  redoStack.length = 0;
+  syncEditButtons();
+}
+function applyMassSnapshot(json) {
+  model.applyPatch({ masses: JSON.parse(json) });
+  clearSelection();
+  model.clearGizmo();
+  refresh(); syncParams(); runAuditView();
+}
+function undoEdit() {
+  if (!undoStack.length) return;
+  redoStack.push(snapMasses());
+  applyMassSnapshot(undoStack.pop());
+  syncEditButtons();
+  ui.toast('Undone.');
+}
+function redoEdit() {
+  if (!redoStack.length) return;
+  undoStack.push(snapMasses());
+  applyMassSnapshot(redoStack.pop());
+  syncEditButtons();
+  ui.toast('Redone.');
+}
+function syncEditButtons() {
+  if ($('edit-undo')) $('edit-undo').disabled = !undoStack.length;
+  if ($('edit-redo')) $('edit-redo').disabled = !redoStack.length;
+}
+function setEditMode(on) {
+  editOn = on;
+  document.body.classList.toggle('editing', on);
+  $('edit-panel').classList.toggle('hidden', !on);
+  if (on) syncEditButtons();
+  else { model.clearGizmo(); model.clearFaceHover(); }
 }
 
 // ---------------- the real site ----------------
@@ -1782,14 +1875,24 @@ function wire() {
   // anywhere else lets go. Delete removes the selected volume.
   function deleteSelected() {
     if (!model.state.masses?.length || !selected.size) return;
+    pushUndo();
     const idx = [...selected].sort((a, b) => b - a);
     const names = idx.map(i => model.state.masses[i]?.role || 'volume');
     for (const i of idx) model.state.masses.splice(i, 1);
-    clearSelection(); refresh(); syncParams();
+    clearSelection(); model.clearGizmo(); refresh(); syncParams(); runAuditView();
     commitVersion(`deleted ${names.join(', ')}`);
     ui.toast(`Deleted ${names.join(', ')}.`);
   }
   $('sel-delete').addEventListener('click', deleteSelected);
+  $('edit-delete')?.addEventListener('click', deleteSelected);
+  $('edit-undo')?.addEventListener('click', undoEdit);
+  $('edit-redo')?.addEventListener('click', redoEdit);
+  addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+    if (e.target?.closest?.('input, textarea, [contenteditable]')) return;
+    e.preventDefault();
+    e.shiftKey ? redoEdit() : undoEdit();
+  });
   addEventListener('keydown', e => {
     if (e.key !== 'Delete' && e.key !== 'Backspace') return;
     if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
@@ -1811,9 +1914,39 @@ function wire() {
     const [nx, ny] = ndcOf(e);
     if (model.hoverFace(nx, ny)) {
       faceEdit = true;
+      pushUndo();
       ui.toast('Face held — drag to push or pull it. Click empty space to let go.', 2600);
     }
   });
+  // edit mode: an axis under the cursor wins over everything else
+  mc.addEventListener('pointerdown', e => {
+    if (!editOn) return;
+    const [nx, ny] = ndcOf(e);
+    const axis = model.gizmoAxisAt(nx, ny);
+    if (!axis) return;
+    pushUndo();
+    if (!model.beginGizmoDrag(nx, ny, axis)) return;
+    e.stopPropagation();
+    const move = ev => { const [mx, my] = ndcOf(ev); model.moveGizmoDrag(mx, my); };
+    const up = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', up);
+      if (model.endGizmoDrag() !== null) {
+        refresh(); syncParams(); runAuditView();
+        commitVersion('moved by hand');
+      }
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  }, true);
+
+  // audit mode: a click on a glowing marker opens its finding
+  mc.addEventListener('pointerdown', e => {
+    if (!auditOn) return;
+    const [nx, ny] = ndcOf(e);
+    if (auditMarkerClick(nx, ny)) e.stopPropagation();
+  }, true);
+
   mc.addEventListener('pointerdown', e => {
     if (!faceEdit) return;
     const [nx, ny] = ndcOf(e);
@@ -1822,7 +1955,7 @@ function wire() {
       const up = () => {
         removeEventListener('pointermove', move);
         removeEventListener('pointerup', up);
-        if (model.endFaceDrag() !== null) { refresh(); syncParams(); commitVersion('face pulled'); }
+        if (model.endFaceDrag() !== null) { refresh(); syncParams(); runAuditView(); commitVersion('face pulled'); }
         // one double-click, one pull — staying armed would swallow every
         // later click on the canvas, selection included
         faceEdit = false;

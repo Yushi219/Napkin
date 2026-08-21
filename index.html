@@ -13,34 +13,34 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@500;600&family=Great+Vibes&family=Pinyon+Script&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=20260821g" />
+<link rel="stylesheet" href="css/style.css?v=20260821h" />
 <script type="importmap">
 {
   "imports": {
     "three": "./js/vendor/three.module.js",
     "three/addons/": "./js/vendor/addons/",
-    "./js/chat.js": "./js/chat.js?v=20260821g",
-    "./js/device.js": "./js/device.js?v=20260821g",
-    "./js/examples.js": "./js/examples.js?v=20260821g",
-    "./js/gallery.js": "./js/gallery.js?v=20260821g",
-    "./js/hands.js": "./js/hands.js?v=20260821g",
-    "./js/interpret.js": "./js/interpret.js?v=20260821g",
-    "./js/main.js": "./js/main.js?v=20260821g",
-    "./js/metrics.js": "./js/metrics.js?v=20260821g",
-    "./js/model.js": "./js/model.js?v=20260821g",
-    "./js/claudecore.js": "./js/claudecore.js?v=20260821g",
-    "./js/builder.js": "./js/builder.js?v=20260821g",
-    "./js/gptcore.js": "./js/gptcore.js?v=20260821g",
-    "./js/openai.js": "./js/openai.js?v=20260821g",
-    "./js/render.js": "./js/render.js?v=20260821g",
-    "./js/auditor.js": "./js/auditor.js?v=20260821g",
-    "./js/site.js": "./js/site.js?v=20260821g",
-    "./js/sketch.js": "./js/sketch.js?v=20260821g",
-    "./js/solar.js": "./js/solar.js?v=20260821g",
-    "./js/splitters.js": "./js/splitters.js?v=20260821g",
-    "./js/tower.js": "./js/tower.js?v=20260821g",
-    "./js/ui.js": "./js/ui.js?v=20260821g",
-    "./js/versions.js": "./js/versions.js?v=20260821g"
+    "./js/chat.js": "./js/chat.js?v=20260821h",
+    "./js/device.js": "./js/device.js?v=20260821h",
+    "./js/examples.js": "./js/examples.js?v=20260821h",
+    "./js/gallery.js": "./js/gallery.js?v=20260821h",
+    "./js/hands.js": "./js/hands.js?v=20260821h",
+    "./js/interpret.js": "./js/interpret.js?v=20260821h",
+    "./js/main.js": "./js/main.js?v=20260821h",
+    "./js/metrics.js": "./js/metrics.js?v=20260821h",
+    "./js/model.js": "./js/model.js?v=20260821h",
+    "./js/claudecore.js": "./js/claudecore.js?v=20260821h",
+    "./js/builder.js": "./js/builder.js?v=20260821h",
+    "./js/gptcore.js": "./js/gptcore.js?v=20260821h",
+    "./js/openai.js": "./js/openai.js?v=20260821h",
+    "./js/render.js": "./js/render.js?v=20260821h",
+    "./js/auditor.js": "./js/auditor.js?v=20260821h",
+    "./js/site.js": "./js/site.js?v=20260821h",
+    "./js/sketch.js": "./js/sketch.js?v=20260821h",
+    "./js/solar.js": "./js/solar.js?v=20260821h",
+    "./js/splitters.js": "./js/splitters.js?v=20260821h",
+    "./js/tower.js": "./js/tower.js?v=20260821h",
+    "./js/ui.js": "./js/ui.js?v=20260821h",
+    "./js/versions.js": "./js/versions.js?v=20260821h"
   }
 }
 </script>
@@ -172,6 +172,7 @@ if (location.protocol === 'file:') {
       <button class="vmode" data-mode="wood">Wood</button>
       <button class="vmode" data-mode="render">AI render</button>
       <button class="vmode" data-mode="audit" title="Structure, code and climate findings painted onto the model">Audit</button>
+      <button class="vmode" data-mode="edit" title="Edit the model directly — select, move, push a face, delete">Edit</button>
       <button id="btn-aspect" class="vmode aspect" title="Frame ratio — click to cycle">16:9</button>
       <button id="btn-fs" class="vmode fs-btn" title="Fullscreen — the model fills the screen">
         <svg class="fs-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>
@@ -197,6 +198,19 @@ if (location.protocol === 'file:') {
         <span id="sel-chips"></span>
         <button id="sel-delete" title="Delete the selected volume (Delete key)" aria-label="Delete selection"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.6h15"/><path d="M9 6.6V4.8a1.2 1.2 0 0 1 1.2-1.2h3.6A1.2 1.2 0 0 1 15 4.8v1.8"/><path d="M6.4 6.6l.9 12a1.6 1.6 0 0 0 1.6 1.5h6.2a1.6 1.6 0 0 0 1.6-1.5l.9-12"/><path d="M10 10.4v5.6M14 10.4v5.6"/></svg></button>
         <button id="sel-clear" title="Clear selection" aria-label="Clear selection"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></svg></button>
+      </div>
+      <div id="edit-panel" class="hidden">
+        <div id="edit-head">Edit</div>
+        <div id="edit-hint">
+          <b>Click</b> a volume to select it — three axes appear, drag one to move.<br>
+          <b>Double-click</b> a face to grab it, then drag to push or pull.<br>
+          <b>Delete</b> removes the selection. <b>Ctrl+Z</b> undo, <b>Ctrl+Shift+Z</b> redo.
+        </div>
+        <div id="edit-actions">
+          <button id="edit-undo" class="pill-btn tiny">↶ Undo</button>
+          <button id="edit-redo" class="pill-btn tiny">↷ Redo</button>
+          <button id="edit-delete" class="pill-btn tiny">Delete</button>
+        </div>
       </div>
       <div id="audit-panel" class="hidden">
         <div id="audit-head"></div>
@@ -287,7 +301,7 @@ if (location.protocol === 'file:') {
 </div>
 <div id="toast"></div>
 
-<script src="js/config.local.js?v=20260821g"></script>
-<script type="module" src="js/main.js?v=20260821g"></script>
+<script src="js/config.local.js?v=20260821h"></script>
+<script type="module" src="js/main.js?v=20260821h"></script>
 </body>
 </html>

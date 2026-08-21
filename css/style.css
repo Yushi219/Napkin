@@ -1498,3 +1498,38 @@ body.workspace #site-row { display: none; }
 body.workspace #kind-select { display: none; }
 body.landing #btn-refine { display: none; }
 #btn-refine[disabled] { opacity: .5; cursor: wait; }
+
+/* ---- audit: evidence on demand, dots that say what they mean ---- */
+.audit-item .ai-why {
+  display: none; margin-top: 5px; padding: 6px 8px;
+  background: #fffdf8; border-left: 2px solid var(--line); border-radius: 0 6px 6px 0;
+  font-family: var(--font-ui); font-size: 10.5px; line-height: 1.5; color: var(--muted);
+}
+.audit-item.open .ai-why { display: block; }
+.audit-item.open { background: var(--accent-soft); }
+.audit-item .ai-more { font-family: var(--font-ui); font-size: 9.5px; color: var(--faint); margin-top: 3px; }
+.audit-item.flash { animation: auditFlash 1.6s ease-out; }
+@keyframes auditFlash {
+  0%, 100% { background: transparent; }
+  20%, 60% { background: var(--accent-soft); }
+}
+#audit-head .dot { cursor: help; }
+#audit-head .ac { cursor: help; }
+
+/* ---- edit mode ---- */
+#edit-panel {
+  position: absolute; top: 12px; left: 12px; z-index: 12;
+  width: min(300px, calc(100% - 24px));
+  background: #fffdf8f0; backdrop-filter: blur(8px);
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+}
+#edit-head {
+  padding: 9px 12px; border-bottom: 1px solid var(--line);
+  font-family: var(--font-ui); font-size: 11.5px; font-weight: 600; color: var(--ink);
+}
+#edit-hint { padding: 9px 12px; font-family: var(--font-ui); font-size: 10.5px; line-height: 1.7; color: var(--muted); }
+#edit-hint b { color: var(--ink); }
+#edit-actions { display: flex; gap: 6px; padding: 0 12px 11px; }
+#edit-actions .pill-btn { flex: 1; justify-content: center; }
+#edit-actions .pill-btn[disabled] { opacity: .4; cursor: default; }
+body.editing #model-canvas { cursor: crosshair; }

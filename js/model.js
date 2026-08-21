@@ -601,6 +601,7 @@ export function initModel(canvas, onPickMass) {
     stepParticles();
     driftClouds();
     clampTiltToGround();
+    stepFlash();
     controls.update();
     renderer.render(scene, camera);
   });
@@ -1728,6 +1729,150 @@ export function clearAuditShells() {
   auditGroup = null;
 }
 
+// ---- audit markers: a glowing point per flagged element ----
+// The shells say WHERE, but a thin member gets no readable shell. A marker
+// floats above every flagged element, clickable, and pulses when its finding
+// is picked in the list — so the panel and the model point at each other.
+let markerGroup = null;
+const _markerHit = [];
+export function showAuditMarkers(worstByElement, colors) {
+  clearAuditMarkers();
+  if (!state.masses?.length) return;
+  markerGroup = new THREE.Group();
+  for (const m of state.masses) {
+    const sev = worstByElement[m.id];
+    if (!sev) continue;
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(Math.max(0.55, Math.min(m.w, m.d, m.h) * 0.16), 16, 12),
+      new THREE.MeshBasicMaterial({ color: colors[sev], transparent: true, opacity: 0.95 }));
+    dot.position.set(m.x, m.y + m.h + Math.max(1.6, m.h * 0.14), m.z);
+    dot.userData.auditId = m.id;
+    dot.userData.baseScale = 1;
+    markerGroup.add(dot);
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(dot.geometry.parameters.radius * 2.1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: colors[sev], transparent: true, opacity: 0.18, depthWrite: false }));
+    halo.position.copy(dot.position);
+    halo.userData.auditId = m.id;
+    markerGroup.add(halo);
+    const stem = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(m.x, m.y + m.h, m.z), dot.position.clone()]),
+      new THREE.LineBasicMaterial({ color: colors[sev], transparent: true, opacity: 0.5 }));
+    markerGroup.add(stem);
+  }
+  scene.add(markerGroup);
+}
+export function clearAuditMarkers() {
+  if (!markerGroup) return;
+  scene.remove(markerGroup);
+  markerGroup.traverse(o => { o.geometry?.dispose(); o.material?.dispose?.(); });
+  markerGroup = null;
+}
+export function markerAt(nx, ny) {
+  if (!markerGroup) return null;
+  _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
+  _ray.setFromCamera(_ndc, camera);
+  const hits = _ray.intersectObjects(markerGroup.children, false);
+  for (const h of hits) if (h.object.userData.auditId) return h.object.userData.auditId;
+  return null;
+}
+let flashUntil = 0, flashId = null;
+export function flashAudit(id) { flashId = id; flashUntil = performance.now() + 2400; }
+function stepFlash() {
+  if (!markerGroup) return;
+  const now = performance.now();
+  const on = flashId && now < flashUntil;
+  const k = on ? 1 + Math.sin(now * 0.012) * 0.45 : 1;
+  markerGroup.children.forEach(o => {
+    if (!o.userData.auditId) return;
+    const s = o.userData.auditId === flashId && on ? k : 1;
+    o.scale.setScalar(s);
+  });
+  if (selGroup && flashId && on) selGroup.visible = Math.sin(now * 0.012) > -0.3;
+  else if (selGroup) selGroup.visible = true;
+}
+
+// ---- the move gizmo: three axes, drag to slide ----
+// Written rather than vendored: TransformControls is a large dependency for
+// three arrows, and this one speaks the app's own coordinate rules.
+let gizmoGroup = null, gizmoIndex = null, gizmoDrag = null;
+const AXIS_COL = { x: 0xd4453a, y: 0x4a9d5b, z: 0x3d7fd4 };
+export function showGizmo(i) {
+  clearGizmo();
+  const m = state.masses?.[i];
+  if (!m) return;
+  gizmoIndex = i;
+  gizmoGroup = new THREE.Group();
+  const L = Math.max(4, Math.min(m.w, m.d, m.h) * 0.9 + 3);
+  for (const ax of ['x', 'y', 'z']) {
+    const dir = new THREE.Vector3(ax === 'x' ? 1 : 0, ax === 'y' ? 1 : 0, ax === 'z' ? 1 : 0);
+    const mat = new THREE.MeshBasicMaterial({ color: AXIS_COL[ax], depthTest: false, transparent: true, opacity: 0.95 });
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(L * 0.035, L * 0.035, L, 10), mat);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(L * 0.1, L * 0.26, 12), mat);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    shaft.quaternion.copy(q); head.quaternion.copy(q);
+    shaft.position.copy(dir.clone().multiplyScalar(L / 2));
+    head.position.copy(dir.clone().multiplyScalar(L + L * 0.13));
+    shaft.renderOrder = head.renderOrder = 999;
+    shaft.userData.axis = head.userData.axis = ax;
+    gizmoGroup.add(shaft, head);
+  }
+  gizmoGroup.position.set(m.x, m.y + m.h / 2, m.z);
+  scene.add(gizmoGroup);
+}
+export function clearGizmo() {
+  if (gizmoGroup) {
+    scene.remove(gizmoGroup);
+    gizmoGroup.traverse(o => { o.geometry?.dispose(); o.material?.dispose?.(); });
+  }
+  gizmoGroup = null; gizmoIndex = null; gizmoDrag = null;
+}
+export function gizmoAxisAt(nx, ny) {
+  if (!gizmoGroup) return null;
+  _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
+  _ray.setFromCamera(_ndc, camera);
+  const hits = _ray.intersectObjects(gizmoGroup.children, false);
+  return hits.length ? hits[0].object.userData.axis : null;
+}
+export function beginGizmoDrag(nx, ny, axis) {
+  const m = state.masses?.[gizmoIndex];
+  if (!m) return false;
+  const dir = new THREE.Vector3(axis === 'x' ? 1 : 0, axis === 'y' ? 1 : 0, axis === 'z' ? 1 : 0);
+  const origin = new THREE.Vector3(m.x, m.y + m.h / 2, m.z);
+  // a plane containing the axis and facing the camera as squarely as it can
+  const toCam = camera.position.clone().sub(origin).normalize();
+  const n = dir.clone().cross(toCam).cross(dir).normalize();
+  _plane.setFromNormalAndCoplanarPoint(n, origin);
+  _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
+  _ray.setFromCamera(_ndc, camera);
+  if (!_ray.ray.intersectPlane(_plane, _hit)) return false;
+  gizmoDrag = { axis, dir, start: _hit.clone(), m0: { x: m.x, y: m.y, z: m.z }, origin };
+  controls.enabled = false;
+  return true;
+}
+export function moveGizmoDrag(nx, ny) {
+  if (!gizmoDrag) return;
+  _ndc.set(nx * 2 - 1, -(ny * 2 - 1));
+  _ray.setFromCamera(_ndc, camera);
+  if (!_ray.ray.intersectPlane(_plane, _hit)) return;
+  const delta = _hit.clone().sub(gizmoDrag.start).dot(gizmoDrag.dir);
+  const m = state.masses[gizmoIndex];
+  const r2 = v => Math.round(v * 100) / 100;
+  if (gizmoDrag.axis === 'x') m.x = r2(gizmoDrag.m0.x + delta);
+  else if (gizmoDrag.axis === 'z') m.z = r2(gizmoDrag.m0.z + delta);
+  else m.y = r2(Math.max(0, gizmoDrag.m0.y + delta));
+  const g = massGroups[gizmoIndex];
+  if (g) g.position.set(m.x, m.y + m.h / 2, m.z);
+  if (gizmoGroup) gizmoGroup.position.set(m.x, m.y + m.h / 2, m.z);
+}
+export function endGizmoDrag() {
+  if (!gizmoDrag) return null;
+  gizmoDrag = null;
+  controls.enabled = true;
+  return gizmoIndex;
+}
+
 // ---- exploded axonometric ----
 // Two palms spreading apart lift the composition into its layers, the way an
 // exploded axon diagram reads. The offsets are a view transform on the groups;
@@ -2124,7 +2269,69 @@ export function expandedMasses() {
         z: m.z + (axis === 'z' ? off : 0) });
     }
   }
-  return out;
+  return applyVoids(out);
+}
+
+// ---- subtraction: a hole is a hole, not four boxes arranged around one ----
+// The grammar could only ADD, so an opening had to be assembled from legs and
+// a lintel that never quite lined up. A kind='void' element is subtracted from
+// the solids it cuts, exactly: an axis-aligned box minus an axis-aligned box
+// is at most six boxes, computed here instead of guessed upstream. Every
+// remainder is still a real solid, so the Rhino export stays NURBS.
+function boxOf(m) {
+  return {
+    minX: m.x - m.w / 2, maxX: m.x + m.w / 2,
+    minY: m.y, maxY: m.y + m.h,
+    minZ: m.z - m.d / 2, maxZ: m.z + m.d / 2,
+  };
+}
+function fromBox(b, src, tag) {
+  return { ...src, repeat: null,
+    id: tag ? `${src.id}~${tag}` : src.id,
+    w: +(b.maxX - b.minX).toFixed(3), d: +(b.maxZ - b.minZ).toFixed(3), h: +(b.maxY - b.minY).toFixed(3),
+    x: +((b.minX + b.maxX) / 2).toFixed(3), z: +((b.minZ + b.maxZ) / 2).toFixed(3), y: +b.minY.toFixed(3) };
+}
+function boxMinus(S, V) {
+  if (V.maxX <= S.minX || V.minX >= S.maxX
+   || V.maxY <= S.minY || V.minY >= S.maxY
+   || V.maxZ <= S.minZ || V.minZ >= S.maxZ) return null;      // no overlap
+  const out = [];
+  if (V.minY > S.minY) out.push({ ...S, maxY: V.minY });
+  if (V.maxY < S.maxY) out.push({ ...S, minY: V.maxY });
+  const y0 = Math.max(S.minY, V.minY), y1 = Math.min(S.maxY, V.maxY);
+  if (y1 > y0) {
+    if (V.minX > S.minX) out.push({ minX: S.minX, maxX: V.minX, minY: y0, maxY: y1, minZ: S.minZ, maxZ: S.maxZ });
+    if (V.maxX < S.maxX) out.push({ minX: V.maxX, maxX: S.maxX, minY: y0, maxY: y1, minZ: S.minZ, maxZ: S.maxZ });
+    const x0 = Math.max(S.minX, V.minX), x1 = Math.min(S.maxX, V.maxX);
+    if (x1 > x0) {
+      if (V.minZ > S.minZ) out.push({ minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: S.minZ, maxZ: V.minZ });
+      if (V.maxZ < S.maxZ) out.push({ minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: V.maxZ, maxZ: S.maxZ });
+    }
+  }
+  return out;      // [] means the void swallowed the solid whole
+}
+function applyVoids(pieces) {
+  const voids = pieces.filter(m => m.kind === 'void');
+  if (!voids.length) return pieces;
+  let solids = pieces.filter(m => m.kind !== 'void');
+  for (const v of voids) {
+    if (Math.abs(v.rotY || 0) > 0.5) continue;               // only square cuts, honestly
+    const V = boxOf(v);
+    const next = [];
+    for (const sIt of solids) {
+      // a void cuts what it names, or anything it genuinely overlaps
+      const targeted = !v.on || v.on === 'ground' || sIt.id === v.on || String(sIt.id).startsWith(v.on + '~');
+      if (!targeted || Math.abs(sIt.rotY || 0) > 0.5) { next.push(sIt); continue; }
+      const parts = boxMinus(boxOf(sIt), V);
+      if (parts === null) { next.push(sIt); continue; }
+      parts.forEach((b, i) => {
+        if (b.maxX - b.minX < 0.05 || b.maxY - b.minY < 0.05 || b.maxZ - b.minZ < 0.05) return;
+        next.push(fromBox(b, sIt, parts.length > 1 ? String(i + 1) : ''));
+      });
+    }
+    solids = next;
+  }
+  return solids;
 }
 
 function buildMasses() {
@@ -2135,7 +2342,11 @@ function buildMasses() {
 
   pieces.forEach((ms, mi) => {
     const grp = new THREE.Group();
-    grp.userData.massIndex = Math.max(0, (state.masses || []).findIndex(a => a.id === String(ms.id).replace(/-\d+$/, '') || a.id === ms.id));
+    // A drawn piece traces back to the row that authored it: strip the
+    // repeat suffix (-3) and the subtraction suffix (~2) to find its parent.
+    const authoredId = String(ms.id).replace(/~\d+$/, '').replace(/-\d+$/, '');
+    const authoredAt = (state.masses || []).findIndex(a => a.id === ms.id || a.id === authoredId);
+    grp.userData.massIndex = authoredAt >= 0 ? authoredAt : 0;
     const isGlass = ms.facade === 'glass';
     const bodyMat = isGlass ? MAT.glass : MAT.clay;
     const floors = ms.storeys || Math.max(1, Math.round(ms.h / fh));

@@ -382,7 +382,7 @@ export function sanitizeMasses(arr) {
     const thin = member ? 0.08 : 0.25;
     return {
     id,
-    kind: ['volume', 'slab', 'member'].includes(m.kind) ? m.kind : (member ? 'member' : role === 'slab' ? 'slab' : 'volume'),
+    kind: ['volume', 'slab', 'member', 'void'].includes(m.kind) ? m.kind : (member ? 'member' : role === 'slab' ? 'slab' : 'volume'),
     role,
     w: cl(m.w, thin, 120, member ? 0.35 : 15), d: cl(m.d, thin, 120, member ? 0.35 : 12), h: cl(m.h, thin, 240, member ? 3 : 12),
     x: cl(m.x, -90, 90, 0), y: cl(m.y, 0, 120, 0), z: cl(m.z, -90, 90, 0),
@@ -408,6 +408,9 @@ export function snapMasses(masses) {
   const byId = new Map(masses.map(m => [m.id, m]));
   const resolved = new Set();
   const resolveSupport = (m, trail = new Set()) => {
+    // A void's "on" names what it CUTS, not what holds it up — snapping it to
+    // the top of that solid would move every opening onto the roof.
+    if (m.kind === 'void') { resolved.add(m.id); return true; }
     if (resolved.has(m.id)) return true;
     if (trail.has(m.id)) return false;
     if (m.on === 'ground') { m.y = 0; resolved.add(m.id); return true; }
@@ -423,6 +426,7 @@ export function snapMasses(masses) {
   // A couple of passes also resolve face constraints that reference one another.
   for (let pass = 0; pass < 2; pass++) {
     for (const m of masses) {
+      if (m.kind === 'void') continue;      // a hole obeys its own coordinates
       for (const f of m.flush || []) {
         const split = String(f).indexOf(':');
         const face = split > 0 ? String(f).slice(0, split) : '';
@@ -756,8 +760,8 @@ export const MASS_SCHEMA = {
   type: 'object', additionalProperties: false,
   properties: {
     id: { type: 'string', minLength: 1, maxLength: 32 },
-    kind: { type: 'string', enum: ['volume', 'slab', 'member'] },
-    role: { type: 'string', enum: ['volume', 'podium', 'bar', 'wing', 'core', 'slab', 'canopy', 'roof', 'balcony', 'frame', 'beam', 'column', 'post', 'screen', 'railing'] },
+    kind: { type: 'string', enum: ['volume', 'slab', 'member', 'void'] },
+    role: { type: 'string', enum: ['volume', 'podium', 'bar', 'wing', 'core', 'slab', 'canopy', 'roof', 'balcony', 'frame', 'beam', 'column', 'post', 'screen', 'railing', 'window', 'opening', 'recess', 'loggia'] },
     w: { type: 'number', minimum: 0.08, maximum: 120 },
     d: { type: 'number', minimum: 0.08, maximum: 120 },
     h: { type: 'number', minimum: 0.08, maximum: 240 },
