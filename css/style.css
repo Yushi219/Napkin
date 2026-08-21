@@ -1634,9 +1634,29 @@ body.reviewing #audit-panel { width: auto; }
 }
 
 /* the compass rail under the turn slider: where the front is pointing */
-.compass-rail {
-  position: relative; height: 12px; margin: -2px 0 2px 46px;
-  font-family: var(--font-mono); font-size: 8.5px; color: var(--faint);
+/* the rail sits in the slider's own grid column, so the cardinals line up
+   with the track instead of running past it */
+.compass-row { margin-top: -4px; margin-bottom: 6px; }
+.compass-rail { position: relative; display: block; height: 10px; }
+.compass-rail b {
+  position: absolute; transform: translateX(-50%);
+  font-family: var(--font-mono); font-size: 8px; font-weight: 400; color: var(--faint);
 }
-.compass-rail span { position: absolute; transform: translateX(-50%); }
-#pv-orient { font-family: var(--font-mono); font-size: 10.5px; color: var(--accent); }
+#pv-orient { font-family: var(--font-mono); font-size: 10px; color: var(--accent); }
+#pv-face { font-family: var(--font-mono); font-size: 9px; color: var(--muted); }
+
+/* the parameter desk: masses first, texture folded away */
+.pg-tier {
+  font-family: var(--font-mono); font-size: 8px; letter-spacing: .5px;
+  color: var(--faint); border: 1px solid var(--line); border-radius: 6px;
+  padding: 1px 5px; margin-left: 6px;
+}
+.pdetail { margin: 6px 0; }
+.pdetail > summary {
+  cursor: pointer; list-style: none; padding: 6px 10px;
+  background: var(--panel); border: 1px dashed var(--line); border-radius: 10px;
+  font-family: var(--font-ui); font-size: 10.5px; color: var(--muted);
+}
+.pdetail > summary::-webkit-details-marker { display: none; }
+.pdetail > summary:hover { border-color: var(--accent); color: var(--accent); }
+.pdetail[open] > summary { margin-bottom: 6px; }

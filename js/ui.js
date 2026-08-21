@@ -4,9 +4,9 @@ import { STYLES } from './render.js';
 import { SPONSORS, sponsorStatus, stream } from './versions.js';
 
 const $ = id => document.getElementById(id);
-// The front facade points +z, which is south with the building unturned; the
-// slider walks it clockwise, so 90 puts the front to the west.
-const COMPASS = ['S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE'];
+// The slider reads as a compass bearing: 0 is north, and it walks clockwise
+// through east, south and west, the way every site plan is drawn.
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 export function compassOf(deg) {
   const d = ((+deg % 360) + 360) % 360;
   return COMPASS[Math.round(d / 22.5) % 16];
@@ -222,19 +222,27 @@ export function renderParams(state, hooks) {
         '<div class="pnote" id="scale-note">' + Math.round(tall) + ' m to the top</div>' +
         // Turning the building turns its facades into or away from the sun,
         // so this slider moves the energy line, not just the picture.
-        '<div class="prow"><label title="Rotate the whole building — the front facade’s compass bearing">turn</label>' +
+        '<div class="prow"><label title="Which way the front facade faces">turn</label>' +
           '<input type="range" min="0" max="359" step="1" value="' + Math.round(orient) + '" id="mass-orient" />' +
-          '<span class="pval" id="pv-orient">' + compassOf(orient) + '</span></div>' +
-        '<div class="compass-rail" aria-hidden="true">' +
-          ['S', 'W', 'N', 'E', 'S'].map(function (c, i) {
-            return '<span style="left:' + (i * 25) + '%">' + c + '</span>';
-          }).join('') +
-        '</div>' +
-        '<div class="pnote" id="orient-note">front faces ' + compassOf(orient) + ' · ' + Math.round(orient) + '°</div>' +
+          '<span class="pval" id="pv-orient">' + Math.round(orient) + '°</span></div>' +
+        '<div class="prow compass-row"><span></span>' +
+          '<span class="compass-rail" aria-hidden="true">' +
+            ['N', 'E', 'S', 'W', 'N'].map(function (c, i) {
+              return '<b style="left:' + (i * 25) + '%">' + c + '</b>';
+            }).join('') +
+          '</span><span class="pval" id="pv-face">' + compassOf(orient) + '</span></div>' +
       '</div>';
-    p.innerHTML = head + state.masses.map((m, i) =>
+    // The desk reads like the building: the masses that matter, expanded; the
+    // texture folded away behind a count. A parameter desk with forty rows is
+    // a spreadsheet, not a design tool.
+    const tierOf = m => m.tier || (m.kind === 'member' ? 'detail' : 'primary');
+    const rows = state.masses.map((m, i) => ({ m, i, tier: tierOf(m) }));
+    const detail = rows.filter(r => r.tier === 'detail');
+    const shown = rows.filter(r => r.tier !== 'detail');
+    const massRow = ({ m, i, tier }) =>
       '<div class="pgroup" data-mi="' + i + '">' +
         '<div class="pgroup-head"><span class="pg-role">' + esc(m.role) + '</span>' +
+        (tier === 'secondary' ? '<span class="pg-tier">secondary</span>' : '') +
         '<select data-facade="' + i + '">' +
         FACADES.map(f => '<option ' + (f === m.facade ? 'selected' : '') + '>' + f + '</option>').join('') +
         '</select><button class="pg-del" data-del="' + i + '" title="Delete volume">\u2715</button></div>' +
@@ -242,18 +250,32 @@ export function renderParams(state, hooks) {
           '<div class="prow"><label>' + k + '</label>' +
           '<input type="range" min="' + lo + '" max="' + hi + '" step="' + st + '" value="' + m[k] + '" data-mi="' + i + '" data-k="' + k + '" />' +
           '<span class="pval" id="pv-' + i + '-' + k + '">' + (Math.round(m[k] * 10) / 10) + '</span></div>').join('') +
-      '</div>').join('') +
-      '<button class="add-mass" id="add-mass">\uff0b add a volume</button>';
+      '</div>';
+    p.innerHTML = head + shown.map(massRow).join('')
+      + (detail.length
+        ? '<details class="pdetail"><summary>' + detail.length + ' detail element'
+          + (detail.length > 1 ? 's' : '') + ' \u2014 screens, fins, railings</summary>'
+          + detail.map(massRow).join('') + '</details>'
+        : '')
+      + '<button class="add-mass" id="add-mass">\uff0b add a volume</button>';
 
     const orEl = p.querySelector('#mass-orient');
     if (orEl) {
-      const showOrient = (v, commit) => {
-        $('pv-orient').textContent = compassOf(v);
-        $('orient-note').textContent = 'front faces ' + compassOf(v) + ' · ' + Math.round(v) + '°';
-        hooks.onGlobalEdit('orientation', +v, commit);
+      // the cardinals are where a plan actually gets set, so they pull
+      const SNAP = 7;
+      const snapped = v => {
+        for (const c of [0, 90, 180, 270, 360]) if (Math.abs(v - c) <= SNAP) return c % 360;
+        return v;
       };
-      orEl.addEventListener('input', () => showOrient(+orEl.value, false));
-      orEl.addEventListener('change', () => showOrient(+orEl.value, true));
+      const showOrient = (raw, commit) => {
+        const v = snapped(+raw);
+        if (+orEl.value !== v) orEl.value = v;
+        $('pv-orient').textContent = Math.round(v) + '°';
+        $('pv-face').textContent = compassOf(v);
+        hooks.onGlobalEdit('orientation', v, commit);
+      };
+      orEl.addEventListener('input', () => showOrient(orEl.value, false));
+      orEl.addEventListener('change', () => showOrient(orEl.value, true));
     }
 
     const scEl = p.querySelector('#mass-scale');

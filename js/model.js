@@ -2485,8 +2485,10 @@ function rebuildSolid() {
 
   if (state.masses?.length) {
     buildMasses();
-    // the whole composition turns together; the site, sun and city do not
-    towerGroup.rotation.y = THREE.MathUtils.degToRad(state.orientation || 0);
+    // orientation is the compass bearing the FRONT facade faces, 0 = north.
+    // Unturned, the front looks down +z, which is south — so south is the
+    // no-rotation case and everything else is measured from there.
+    towerGroup.rotation.y = THREE.MathUtils.degToRad((state.orientation || 0) - 180);
     scene.add(towerGroup);
     applyExplode();
     const st = towerStats();

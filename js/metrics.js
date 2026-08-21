@@ -63,7 +63,7 @@ export function compute(customText = '') {
   // more than square ones, because they HAVE a long facade to point.
   const aspect = Math.max(st.bbW, st.bbD) / Math.max(1, Math.min(st.bbW, st.bbD));
   const elongation = Math.min(1, (aspect - 1) / 2);          // 0 square, 1 at 3:1
-  const facing = ((state.orientation % 360) + 360) % 360;     // 0 = long face south
+  const facing = ((state.orientation % 360) + 360) % 360;     // compass bearing, 0 = north
   // worst at 90 and 270 (east-west glazing), best at 0 and 180
   const solarExposure = Math.abs(Math.sin(facing * Math.PI / 180));
   const southern = site.lat < 0;

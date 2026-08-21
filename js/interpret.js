@@ -394,6 +394,8 @@ export function sanitizeMasses(arr) {
     partOf: typeof m.partOf === 'string' ? m.partOf.slice(0, 24) : null,
     storeys: Number.isFinite(+m.storeys) ? Math.round(+m.storeys) : null,
     level: Number.isFinite(+m.level) ? Math.max(0, Math.round(+m.level)) : null,
+    tier: ['primary', 'secondary', 'detail'].includes(m.tier) ? m.tier
+      : (member ? 'detail' : (m.kind === 'slab' || ['canopy', 'roof', 'balcony', 'frame'].includes(role) ? 'secondary' : 'primary')),
     repeat: (r => r && ['x', 'y', 'z'].includes(r.axis) && +r.count >= 2 && +r.step > 0
       ? { axis: r.axis, count: Math.min(60, Math.round(+r.count)), step: cl(r.step, 0.15, 20, 1) }
       : null)(m.repeat),
@@ -776,6 +778,8 @@ export const MASS_SCHEMA = {
     partOf: { type: ['string', 'null'] },
     storeys: { type: ['integer', 'null'], minimum: 1, maximum: 80 },
     level: { type: ['integer', 'null'], minimum: 0, maximum: 80 },
+    tier: { type: 'string', enum: ['primary', 'secondary', 'detail'],
+      description: 'primary = an inhabitable mass of the building; secondary = something that changes the silhouette (canopy, cantilevered slab, entry frame); detail = texture (fins, mullions, railings)' },
     repeat: {
       type: ['object', 'null'],
       description: 'array this element: fins, louvres, columns, floor bands. ONE declaration becomes count pieces.',

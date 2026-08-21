@@ -47,7 +47,7 @@ const FAST_TOOL = {
       // and it costs nothing extra - same single call.
       levels: {
         type: 'array', minItems: 1,
-        description: 'the storeys/tiers you can see, bottom to top, BEFORE placing any box',
+        description: 'FIRST the parti in one entry (index -1): the two or three primary masses and what each does. Then the storeys bottom to top.',
         items: { type: 'object', properties: {
           index: { type: 'integer' },
           description: { type: 'string', description: 'what sits at this level and how it shifts, cantilevers or opens' },
@@ -65,15 +65,24 @@ const FAST_TOOL = {
   },
 };
 
-const FAST_BRIEF = `Replicate the building in this drawing as boxes, faithfully — main massing and details both. Fill "levels" FIRST: read the drawing storey by storey, bottom to top, and describe what each level does before you place a single box. Then let the boxes obey that list - every level you named must exist, with the shifts, cantilevers and openings you described. Return it all in one build_scene call.
+const FAST_BRIEF = `Read this drawing the way an architect reads it, then build it.
 
-EVIDENCE. You are given the whole drawing plus enlarged halves. Count storey lines, mullions, slats, railings and doors in the enlargements - a counted line beats an impression. Detail the drawing shows and the boxes lack is the most common failure here: secondary volumes, canopies, recessed voids, open frames.
+HOW AN ARCHITECT SEES IT. Before anything else, name the PARTI: the two or three primary masses this building is made of, and what each one does. A drawing is almost never twenty things — it is "a long bar on a glazed base" or "an L of two wings around a corner" or "a solid block with a lighter volume cantilevered off it". Say that first, in the levels list, and let the model be that.
 
-RULES. Metres; y up, ground y=0; front facade faces +z; x right; a box occupies x±w/2, z±d/2, y to y+h. kind=volume|slab|member; members 0.08-0.6 m thick for posts, beams and frames — an opening or roofless frame is built open, never a filled box. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5; h = storeys × that. State the envelope first in your head and make the boxes fill it. Camera: yawDeg 0 faces the front, positive walks right; pitchDeg above horizon.
+THE THREE TIERS. Every element carries a tier, and the count matters:
+- primary: the inhabitable masses. TWO TO FOUR of them, almost always. These are the building.
+- secondary: only what genuinely changes the silhouette — a deep canopy, a cantilevered slab, an entry frame you could walk under, a roof plane that reads separately. Four at most.
+- detail: texture — a slatted screen, a run of fins, a balustrade. Only when the drawing makes a point of it, and ALWAYS as one element with a repeat block, never as loose boxes.
 
-ASSEMBLIES — this is what makes a reading read. Anything the drawing repeats is declared ONCE with "repeat": {axis, count, step}, never stamped out by hand. A slatted screen is one 0.2 m fin repeated 24 times at 0.9 m along x. A colonnade is one 0.4 m post repeated 6 times. Floor bands, louvres, mullions, balustrades, piers — all repeats. Count them off the drawing and give the real count and the real spacing; a screen with the wrong rhythm reads wrong even at the right size.
+WHAT NOT TO BUILD. Do not model window frames, mullions, glazing bars, door leaves, handrails, sills, or panel joints as elements. A glazed wall is the facade of its mass ("glass"), not a stack of thin boxes. If removing an element would not change how the building reads from across the street, it does not belong in the model. Twelve elements is a rich building; thirty is a mistake.
 
-STATICS — the model must stand up, and it is checked. Every elevated element names its true support in "on"; touching elements share coordinates exactly. A volume needs at least 40% of its plan bearing on its support, or it is a cantilever and must say so AND be no deeper than a third of the supported span. A member never carries a volume — if a canopy or slab is held up, it rests on posts or on a volume, and the posts stand on the ground or on a slab. Nothing floats.`;
+VOIDS. A recess, a loggia, an undercut ground floor, an opening you can see daylight through: kind="void", placed so it cuts INTO the mass it belongs to. Never build a hole out of four separate solids.
+
+RULES. Metres; y up, ground y=0; front facade faces +z; x right; a box occupies x±w/2, z±d/2, y to y+h. Storey height by type: house 3.0 · apartments 3.1 · hotel 3.2 · school 3.6 · office 3.9 · lab 4.5; h = storeys × that. State the envelope and make the primary masses fill it. Camera: yawDeg 0 faces the front, positive walks right; pitchDeg above horizon.
+
+STATICS. Every elevated element sits on something REAL: name it in "on", and make the geometry agree — the auditor looks underneath rather than reading the label. A volume needs at least 40% of its plan bearing on what is below it, or it is a cantilever and must say so and reach no further than a third of its own length. Nothing floats.
+
+EVIDENCE. You have the whole drawing plus enlarged halves. Count storeys, bays and fins in the enlargements — a counted line beats an impression.`;
 
 export async function fastBuild(rawTargetURL, io) {
   if (!hasClaude()) return null;

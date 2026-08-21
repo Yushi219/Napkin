@@ -1226,7 +1226,16 @@ function loadLeaflet() {
 // localStorage in a handful of projects.
 const RECENT_KEY = 'napkin_site_recent';
 const escSite = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const shortName = site => (site.region?.city || site.region?.label || site.label || 'site').split(',')[0].trim().slice(0, 22);
+// A project is known by its street, not its city — "Beverly Street" tells you
+// where you are standing; "Boston" does not.
+const shortName = site => {
+  const a = site.address || {};
+  const road = a.road || a.pedestrian || a.footway || a.neighbourhood || a.suburb;
+  if (road) return String(road).trim().slice(0, 24);
+  // no road tag: the first part of the display name is usually the street
+  const first = String(site.label || '').split(',')[0].trim();
+  return (first || site.region?.city || 'site').slice(0, 24);
+};
 
 function recentSites() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
