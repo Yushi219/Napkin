@@ -951,7 +951,10 @@ function buildRealContext(mat, PAL, wood) {
       m.rotation.x = -Math.PI / 2;
       const cgx = g.poly.reduce((a, q) => a + q[0], 0) / g.poly.length;
       const cgz = g.poly.reduce((a, q) => a + q[1], 0) / g.poly.length;
-      m.position.y = realTerrainAt(cgx, cgz) + 0.12;
+      const gy = realTerrainAt(cgx, cgz);
+      const gAbs0 = Number.isFinite(realSite.terrain?.centreAbs) ? realSite.terrain.centreAbs : null;
+      if (gAbs0 !== null && gy + gAbs0 < 0.7) continue;   // that "lawn" is under water
+      m.position.y = gy + 0.12;
       m.receiveShadow = true;
       contextGroup.add(m);
     } catch { /* skip */ }
@@ -959,6 +962,36 @@ function buildRealContext(mat, PAL, wood) {
 
   // ---- water: bodies as plates, rivers as ribbons ----
   const waterMat = wood ? woodContextMaterial('block') : new THREE.MeshStandardMaterial({ color: 0x9db8c6, roughness: 0.35, metalness: 0.1 });
+
+  // The sea. A harbour is not a polygon in OSM — it is coastline, and the
+  // water is everything at sea level. The terrain grid keeps its absolute
+  // datum, so when the scene touches sea level (or the data shows coastline),
+  // one large water plane at absolute zero does what the map cannot: land
+  // stays above it, the harbour reads as water everywhere the ground dips.
+  const abs0 = Number.isFinite(realSite.terrain?.centreAbs) ? realSite.terrain.centreAbs : null;
+  const coastal = (realSite.coast?.length || 0) > 0
+    || (abs0 !== null && Math.min(...(realSite.terrain?.heights || [99])) + abs0 < 1.2);
+  if (coastal && abs0 !== null) {
+    const seaY = 0.22 - abs0;                    // absolute ~0.2 m, in scene terms
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(R * 2.4, R * 2.4), waterMat);
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.y = seaY;
+    contextGroup.add(sea);
+    // piers stand just proud of the water
+    const pierMatTop = wood ? woodContextMaterial('block') : new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.95 });
+    for (const pr of realSite.piers || []) {
+      try {
+        const sh = new THREE.Shape();
+        pr.poly.forEach(([x, z], i) => i ? sh.lineTo(x, -z) : sh.moveTo(x, -z));
+        sh.closePath();
+        const deck = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 1.1, bevelEnabled: false }), pierMatTop);
+        deck.rotation.x = -Math.PI / 2;
+        deck.position.y = seaY + 0.15;
+        deck.castShadow = deck.receiveShadow = true;
+        contextGroup.add(deck);
+      } catch { /* skip */ }
+    }
+  }
   for (const w of realSite.water || []) {
     try {
       if (w.line) {
@@ -976,7 +1009,7 @@ function buildRealContext(mat, PAL, wood) {
   }
 
   // ---- roads: real polylines at their real widths; bridges rise and carry piers ----
-  const roadMat = wood ? woodContextMaterial('ground') : new THREE.MeshStandardMaterial({ color: 0xa9a396, roughness: 0.98 });
+  const roadMat = wood ? woodContextMaterial('ground') : new THREE.MeshStandardMaterial({ color: 0xbcb6a8, roughness: 0.98 });
   const bridgeMat = wood ? woodContextMaterial('block') : new THREE.MeshStandardMaterial({ color: 0xb6b0a2, roughness: 0.9 });
   const pierMat = wood ? woodContextMaterial('block') : new THREE.MeshStandardMaterial({ color: 0x9a9488, roughness: 0.95 });
   for (const rd of realSite.roads || []) {
@@ -992,7 +1025,8 @@ function buildRealContext(mat, PAL, wood) {
       const [x1, z1] = pts[i], [x2, z2] = pts[i + 1];
       const len = Math.hypot(x2 - x1, z2 - z1);
       if (len < 0.5) continue;
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, isBridge ? 0.6 : 0.18, width), material);
+      // each segment overshoots by its width so bends close instead of gapping
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(len + width * 0.9, isBridge ? 0.6 : 0.18, width), material);
       const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
       mesh.position.set(mx, liftAt(mx, mz) + (isBridge ? 0 : 0), mz);
       mesh.rotation.y = -Math.atan2(z2 - z1, x2 - x1);

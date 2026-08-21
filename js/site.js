@@ -84,11 +84,13 @@ export async function fetchContextFeatures(lat, lon, radius = 220) {
   const q = `[out:json][timeout:30];(
     way[building](around:${R},${lat},${lon});
     way[highway~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|footway|cycleway|path)$"](around:${R},${lat},${lon});
-    way[waterway~"^(river|stream|canal)$"](around:${R + 80},${lat},${lon});
+    way[waterway~"^(river|stream|canal|riverbank)$"](around:${R + 80},${lat},${lon});
     way[natural=water](around:${R + 80},${lat},${lon});
+    way[natural=coastline](around:${R + 150},${lat},${lon});
+    way[man_made=pier](around:${R + 60},${lat},${lon});
     way[leisure~"^(park|garden|pitch|playground|common)$"](around:${R},${lat},${lon});
     way[landuse~"^(grass|forest|meadow|recreation_ground|cemetery|village_green)$"](around:${R},${lat},${lon});
-  );out geom 900;`;
+  );out geom 1200;`;
   let rows = null, lastErr = null;
   for (const host of OVERPASS) {
     try {
@@ -100,12 +102,17 @@ export async function fetchContextFeatures(lat, lon, radius = 220) {
   }
   if (!rows) throw lastErr || new Error('overpass unreachable');
 
-  const buildings = [], roads = [], water = [], green = [];
+  const buildings = [], roads = [], water = [], green = [], coast = [], piers = [];
   for (const w of rows) {
     if (!w.geometry || w.geometry.length < 2) continue;
     const pts = w.geometry.map(g => toLocal(g.lat, g.lon, lat, lon));
     const t = w.tags || {};
-    if (t.building) {
+    if (t.natural === 'coastline') {
+      coast.push({ pts });
+    } else if (t.man_made === 'pier') {
+      if (pts.length >= 3) piers.push({ poly: pts });
+      else roads.push({ pts, w: 4, bridge: false, kind: 'pier' });
+    } else if (t.building) {
       if (pts.length < 3) continue;
       let h = parseFloat(t.height);
       if (!Number.isFinite(h)) {
@@ -115,8 +122,9 @@ export async function fetchContextFeatures(lat, lon, radius = 220) {
       buildings.push({ poly: pts, h: Math.max(3, Math.min(320, h)), name: t.name || null });
     } else if (t.highway) {
       roads.push({ pts, w: ROAD_W[t.highway] || 5, bridge: t.bridge === 'yes' || !!t.bridge && t.bridge !== 'no', kind: t.highway });
+    } else if (t.waterway === 'riverbank') {
+      if (pts.length >= 3) water.push({ poly: pts, line: false });
     } else if (t.waterway) {
-      roads; // keep linter quiet
       water.push({ pts, line: true, w: Math.max(4, parseFloat(t.width) || (t.waterway === 'river' ? 20 : 5)) });
     } else if (t.natural === 'water') {
       if (pts.length >= 3) water.push({ poly: pts, line: false });
@@ -124,7 +132,7 @@ export async function fetchContextFeatures(lat, lon, radius = 220) {
       if (pts.length >= 3) green.push({ poly: pts });
     }
   }
-  const out = { buildings, roads: roads.slice(0, 260), water: water.slice(0, 80), green: green.slice(0, 120) };
+  const out = { buildings, roads: roads.slice(0, 420), water: water.slice(0, 90), green: green.slice(0, 130), coast: coast.slice(0, 60), piers: piers.slice(0, 80) };
   cache.set(key, out);
   return out;
 }
@@ -180,7 +188,9 @@ export async function fetchTerrainGrid(lat, lon, radius = 220, n = 7) {
   const hs = (await res.json()).elevation || [];
   if (hs.length !== n * n) throw new Error('elevation grid incomplete');
   const centre = hs[Math.floor(n * n / 2)];
-  const grid = { n, radius, heights: hs.map(h => +(h - centre).toFixed(1)) };
+  // centreAbs keeps the absolute datum: sea level is absolute zero, and a
+  // coastal scene needs to know where that is relative to the parcel.
+  const grid = { n, radius, heights: hs.map(h => +(h - centre).toFixed(1)), centreAbs: +centre.toFixed(1) };
   cache.set(key, grid);
   return grid;
 }
