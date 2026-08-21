@@ -1047,7 +1047,14 @@ function applyPinnedSite(site) {
   localStorage.setItem('napkin_real_site', JSON.stringify(site));
   refresh();
   syncSunControls();
-  ui.addChatMsg('ai', `Site pinned: ${site.label.split(',').slice(0, 2).join(',')}. From OpenStreetMap: ${site.buildings.length} buildings, ${site.roads?.length || 0} street segments, ${site.water?.length || 0} water features, ${site.green?.length || 0} green spaces${site.parcelLocal ? ' — your drawn parcel is cleared for the design' : ''}. Ground from real elevations, ${site.weather ? 'live weather: ' + site.weather.sky : 'weather unavailable'}, sun at ${site.lat.toFixed(3)}, ${site.lon.toFixed(3)}.`);
+  const nCtx = site.buildings.length + (site.roads?.length || 0);
+  if (site.contextError) {
+    ui.addChatMsg('ai', `Site pinned, but OpenStreetMap did not answer for the surroundings (${site.contextError.slice(0, 60)}). The ground and sun are real; the neighbourhood is empty. Re-pin in a minute and it usually comes through.`, 'err');
+  } else if (nCtx < 4) {
+    ui.addChatMsg('ai', `Site pinned — but OpenStreetMap has almost nothing mapped here (${site.buildings.length} buildings, ${site.roads?.length || 0} streets even at ${site.radius} m). That is common outside densely-mapped areas — much of mainland China, for instance. The terrain, sun and weather are still real; the streetscape simply is not in the public map.`, 'err');
+  } else {
+    ui.addChatMsg('ai', `Site pinned: ${site.label.split(',').slice(0, 2).join(',')}. From OpenStreetMap: ${site.buildings.length} buildings, ${site.roads?.length || 0} street segments, ${site.water?.length || 0} water features, ${site.green?.length || 0} green spaces${site.parcelLocal ? ' — your drawn parcel is cleared for the design' : ''}. Ground from real elevations, ${site.weather ? 'live weather: ' + site.weather.sky : 'weather unavailable'}, sun at ${site.lat.toFixed(3)}, ${site.lon.toFixed(3)}.`);
+  }
 }
 
 async function openSitePicker(hit) {

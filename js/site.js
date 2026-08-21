@@ -234,12 +234,23 @@ export async function fetchLiveWeather(lat, lon) {
 export async function assembleSite({ lat, lon, radius, label, address, parcel }, onStep) {
   const region = regionOf(address);
   onStep?.('Fetching streets, water, parks and neighbours from OpenStreetMap…');
-  const features = await fetchContextFeatures(lat, lon, radius).catch(e => { console.warn('context failed', e); return { buildings: [], roads: [], water: [], green: [] }; });
+  let contextError = null;
+  let features = await fetchContextFeatures(lat, lon, radius)
+    .catch(e => { contextError = String(e.message || e); return { buildings: [], roads: [], water: [], green: [] }; });
+  // A bare answer from a real query usually means a thinly-mapped area — widen
+  // once before concluding there is nothing there.
+  if (!contextError && features.buildings.length + features.roads.length < 4 && radius < 400) {
+    onStep?.('Almost nothing mapped this close — widening the search to 400 m…');
+    const wider = await fetchContextFeatures(lat, lon, 400).catch(() => null);
+    if (wider && wider.buildings.length + wider.roads.length > features.buildings.length + features.roads.length) {
+      features = wider; radius = 400;
+    }
+  }
   onStep?.(`${features.buildings.length} buildings, ${features.roads.length} road segments. Reading the ground…`);
   const terrain = await fetchTerrainGrid(lat, lon, radius).catch(e => { console.warn('terrain failed', e); return null; });
   onStep?.('Asking the sky over the site…');
   const weather = await fetchLiveWeather(lat, lon).catch(e => { console.warn('weather failed', e); return null; });
   const parcelLocal = parcel?.length >= 3 ? parcel.map(([la, lo]) => toLocal(la, lo, lat, lon)) : null;
-  activeSite = { lat, lon, radius, label, address, region, ...features, terrain, weather, parcelLocal };
+  activeSite = { lat, lon, radius, label, address, region, ...features, terrain, weather, parcelLocal, contextError };
   return activeSite;
 }
