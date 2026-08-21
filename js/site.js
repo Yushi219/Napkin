@@ -56,7 +56,16 @@ export function toLocal(lat, lon, lat0, lon0) {
   return [x, z];
 }
 
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+// kumi.systems sends no CORS headers, so a browser can never read it —
+// which silently reduced the mirror list to one host, and one 429 took the
+// whole neighbourhood down. These mirrors all answer browsers.
+// Probed from an actual browser: overpass-api.de and openstreetmap.fr answer
+// with worldwide data; osm.ch is a Switzerland-only extract (200 + zero
+// results anywhere else — worse than failing), kumi sends no CORS headers.
+const OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+];
 
 // point-in-polygon, local metres — the parcel test
 export function pointInPoly([px, pz], poly) {

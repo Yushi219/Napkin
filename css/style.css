@@ -1492,3 +1492,9 @@ body.workspace #site-row { display: none; }
   #project-name { width: 96px; font-size: 13px; }
   #dash-site { max-width: 104px; font-size: 9.5px; padding: 4px 8px; }
 }
+
+/* the landing keeps its own type picker (the header hides there); the
+   workspace already asks in the header, so only one shows at a time */
+body.workspace #kind-select { display: none; }
+body.landing #btn-refine { display: none; }
+#btn-refine[disabled] { opacity: .5; cursor: wait; }

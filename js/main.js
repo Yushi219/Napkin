@@ -1263,7 +1263,24 @@ function wireSiteSearch() {
   // a site pinned in an earlier session comes back
   try {
     const saved = JSON.parse(localStorage.getItem('napkin_real_site') || 'null');
-    if (saved?.lat) { siteData.setActiveSite(saved); applyPinnedSite(saved); }
+    if (saved?.lat) {
+      siteData.setActiveSite(saved);
+      applyPinnedSite(saved);
+      // a pin made while Overpass was down carries an empty neighbourhood —
+      // quietly try again now and merge what comes back
+      if ((saved.buildings?.length || 0) + (saved.roads?.length || 0) < 4) {
+        siteData.fetchContextFeatures(saved.lat, saved.lon, saved.radius || 220).then(f => {
+          if (!f || f.buildings.length + f.roads.length < 4) return;
+          Object.assign(saved, f);
+          saved.contextError = null;
+          siteData.setActiveSite(saved);
+          localStorage.setItem('napkin_real_site', JSON.stringify(saved));
+          model.setRealSiteData(saved);
+          renderDashSite();
+          ui.addChatMsg('ai', `Neighbourhood recovered: ${f.buildings.length} buildings and ${f.roads.length} street segments just arrived from OpenStreetMap.`);
+        }).catch(() => { /* still down; the dash chip re-pins */ });
+      }
+    }
     renderRecentSites();
     renderDashSite();
   } catch { /* ignore */ }
@@ -1276,6 +1293,45 @@ function wire() {
   const dev = initDevice();
 
   $('btn-build').addEventListener('click', build);
+
+  // On-demand fidelity: the same compare-and-correct the background self-check
+  // runs, but in the foreground, twice, at the user's request — the "spend a
+  // minute, get closer" button. The sixty-second default stays untouched.
+  $('btn-refine').addEventListener('click', async () => {
+    if (!model.state.masses?.length) { ui.toast('Build first — then Refine tightens the match.'); return; }
+    const target = lastReferenceShot || lastSketchShot;
+    if (!target) { ui.toast('Refine needs the original sketch — draw and Build first.'); return; }
+    const btn = $('btn-refine');
+    btn.disabled = true;
+    const note = ui.addChatMsg('ai', 'Refining — comparing the model against your sketch…', 'busy');
+    let applied = 0;
+    try {
+      for (let round = 1; round <= 2; round++) {
+        ui.veil(true, `refine pass ${round} — compare and correct…`);
+        const findings = runAudit({ masses: model.state.masses, metrics: compute(customTypeText), site: siteData.currentRealSite() }).findings;
+        const r = await quickCorrect(target, model.state.masses, lastCamera, {
+          snapshot: () => model.modelSnapshot(1100, { isolate: true }),
+          auditFindings: findings,
+        });
+        if (!r) break;
+        model.applyPatch({ masses: r.masses });
+        if (r.camera) { lastCamera = r.camera; model.setCameraAngle(r.camera.yawDeg, r.camera.pitchDeg, r.camera.fovDeg); model.frameBuilding(1.14); }
+        refresh(); syncParams(); commitVersion(`⟲ refine ${round}`);
+        applied++;
+        note.textContent = `Refine pass ${round} applied — looking again…`;
+      }
+      note.classList.remove('busy');
+      note.textContent = applied
+        ? `⟲ Refined against the sketch — ${applied} pass${applied > 1 ? 'es' : ''} applied.`
+        : '✓ Refine found nothing left to tighten.';
+    } catch (e) {
+      note.className = 'cmsg ai err';
+      note.textContent = 'Refine failed: ' + String(e.message).slice(0, 90);
+    } finally {
+      ui.veil(false);
+      btn.disabled = false;
+    }
+  });
 
   // ---- napkin tools ----
   const setTool = t => {
@@ -1345,6 +1401,7 @@ function wire() {
 
   $('type-select').addEventListener('change', e => {
     const v = e.target.value;
+    if ($('kind-select').value !== v) $('kind-select').value = v;
     $('type-custom').classList.toggle('hidden', v !== 'custom');
     if (v !== 'custom') {
       customTypeText = '';
@@ -1839,6 +1896,12 @@ function wire() {
       x.classList.toggle('active', x.dataset.detail === 'massing'));
   }
   onDeviceChange(k => { if (k !== 'phone') document.body.classList.remove('pane-sketch', 'pane-model'); });
+
+  // the landing's type picker and the header's are one question, two places
+  $('kind-select').addEventListener('change', e => {
+    $('type-select').value = e.target.value;
+    $('type-select').dispatchEvent(new Event('change'));
+  });
 
   // ---- the header trio: name, program, site ----
   const nameInput = $('project-name');

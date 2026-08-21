@@ -13,34 +13,34 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@500;600&family=Great+Vibes&family=Pinyon+Script&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=20260821f" />
+<link rel="stylesheet" href="css/style.css?v=20260821g" />
 <script type="importmap">
 {
   "imports": {
     "three": "./js/vendor/three.module.js",
     "three/addons/": "./js/vendor/addons/",
-    "./js/chat.js": "./js/chat.js?v=20260821f",
-    "./js/device.js": "./js/device.js?v=20260821f",
-    "./js/examples.js": "./js/examples.js?v=20260821f",
-    "./js/gallery.js": "./js/gallery.js?v=20260821f",
-    "./js/hands.js": "./js/hands.js?v=20260821f",
-    "./js/interpret.js": "./js/interpret.js?v=20260821f",
-    "./js/main.js": "./js/main.js?v=20260821f",
-    "./js/metrics.js": "./js/metrics.js?v=20260821f",
-    "./js/model.js": "./js/model.js?v=20260821f",
-    "./js/claudecore.js": "./js/claudecore.js?v=20260821f",
-    "./js/builder.js": "./js/builder.js?v=20260821f",
-    "./js/gptcore.js": "./js/gptcore.js?v=20260821f",
-    "./js/openai.js": "./js/openai.js?v=20260821f",
-    "./js/render.js": "./js/render.js?v=20260821f",
-    "./js/auditor.js": "./js/auditor.js?v=20260821f",
-    "./js/site.js": "./js/site.js?v=20260821f",
-    "./js/sketch.js": "./js/sketch.js?v=20260821f",
-    "./js/solar.js": "./js/solar.js?v=20260821f",
-    "./js/splitters.js": "./js/splitters.js?v=20260821f",
-    "./js/tower.js": "./js/tower.js?v=20260821f",
-    "./js/ui.js": "./js/ui.js?v=20260821f",
-    "./js/versions.js": "./js/versions.js?v=20260821f"
+    "./js/chat.js": "./js/chat.js?v=20260821g",
+    "./js/device.js": "./js/device.js?v=20260821g",
+    "./js/examples.js": "./js/examples.js?v=20260821g",
+    "./js/gallery.js": "./js/gallery.js?v=20260821g",
+    "./js/hands.js": "./js/hands.js?v=20260821g",
+    "./js/interpret.js": "./js/interpret.js?v=20260821g",
+    "./js/main.js": "./js/main.js?v=20260821g",
+    "./js/metrics.js": "./js/metrics.js?v=20260821g",
+    "./js/model.js": "./js/model.js?v=20260821g",
+    "./js/claudecore.js": "./js/claudecore.js?v=20260821g",
+    "./js/builder.js": "./js/builder.js?v=20260821g",
+    "./js/gptcore.js": "./js/gptcore.js?v=20260821g",
+    "./js/openai.js": "./js/openai.js?v=20260821g",
+    "./js/render.js": "./js/render.js?v=20260821g",
+    "./js/auditor.js": "./js/auditor.js?v=20260821g",
+    "./js/site.js": "./js/site.js?v=20260821g",
+    "./js/sketch.js": "./js/sketch.js?v=20260821g",
+    "./js/solar.js": "./js/solar.js?v=20260821g",
+    "./js/splitters.js": "./js/splitters.js?v=20260821g",
+    "./js/tower.js": "./js/tower.js?v=20260821g",
+    "./js/ui.js": "./js/ui.js?v=20260821g",
+    "./js/versions.js": "./js/versions.js?v=20260821g"
   }
 }
 </script>
@@ -126,8 +126,17 @@ if (location.protocol === 'file:') {
         </div>
         <label class="pill-btn" for="photo-input" title="Upload a photo of a real napkin">Photo</label>
         <input id="photo-input" type="file" accept="image/*" class="hidden" />
-        <select id="kind-select" class="hidden"></select>
+        <select id="kind-select" title="What are you drawing? It sets storey heights and the metric model">
+          <option value="office">Office tower</option>
+          <option value="museum">Museum</option>
+          <option value="residential">Housing</option>
+          <option value="laboratory">Laboratory</option>
+          <option value="hotel">Hotel</option>
+          <option value="school">School</option>
+          <option value="custom">Something else…</option>
+        </select>
         <button id="btn-build" class="build-btn">Build it<svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h14.4"/><path d="M13.6 7.2 18.4 12l-4.8 4.8"/></svg></button>
+        <button id="btn-refine" class="pill-btn" title="Two more compare-and-correct passes against your sketch — slower, closer">⟲ Refine</button>
       </div>
       <div id="concept-pane" class="hidden">
         <span class="pane-tag">concept pass</span>
@@ -278,7 +287,7 @@ if (location.protocol === 'file:') {
 </div>
 <div id="toast"></div>
 
-<script src="js/config.local.js?v=20260821f"></script>
-<script type="module" src="js/main.js?v=20260821f"></script>
+<script src="js/config.local.js?v=20260821g"></script>
+<script type="module" src="js/main.js?v=20260821g"></script>
 </body>
 </html>
