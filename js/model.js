@@ -863,6 +863,18 @@ function rebuildContext() {
 const GROUND_COL = { paved: 0xdcd6c4, lawn: 0x8fa878, meadow: 0xa8ac7a, gravel: 0xcfc7b4 };
 const BASE_COL = { paved: 0xe9e4d6, lawn: 0xdfe4d2, meadow: 0xe1e3d0, gravel: 0xe4e0d4 };
 
+// The level the building stands at: the terrain under the middle of the drawn
+// parcel, or under the origin when no parcel exists. Without this a sloping
+// site buries one corner of the building and floats the other.
+export function siteGroundLevel() {
+  if (!realSite) return 0;
+  const p = realSite.parcelLocal;
+  if (!p?.length) return realTerrainAt(0, 0);
+  const cx = p.reduce((a, q) => a + q[0], 0) / p.length;
+  const cz = p.reduce((a, q) => a + q[1], 0) / p.length;
+  return realTerrainAt(cx, cz);
+}
+
 function fabricFor(L) {
   const F = L.fabric;
   const want = Math.max(9, designedHeight() * 1.7);
@@ -900,9 +912,9 @@ function realTerrainAt(x, z) {
   const fu = u - i, fv = v - j;
   const h00 = heights[j * n + i] ?? 0, h10 = heights[j * n + i + 1] ?? h00;
   const h01 = heights[(j + 1) * n + i] ?? h00, h11 = heights[(j + 1) * n + i + 1] ?? h10;
-  // the parcel itself stays level so the building sits honestly
-  const flat = Math.max(0, 1 - Math.hypot(x, z) / 46);
-  return ((h00 * (1 - fu) + h10 * fu) * (1 - fv) + (h01 * (1 - fu) + h11 * fu) * fv) * (1 - flat);
+  // The site keeps its slope. Flattening the parcel made every project read as
+  // though it stood on a table; a building on a hill should look like it.
+  return (h00 * (1 - fu) + h10 * fu) * (1 - fv) + (h01 * (1 - fu) + h11 * fu) * fv;
 }
 
 function buildRealContext(mat, PAL, wood) {
@@ -2485,6 +2497,8 @@ function rebuildSolid() {
 
   if (state.masses?.length) {
     buildMasses();
+    // stand the composition on the ground beneath the parcel, not on y=0
+    towerGroup.position.y = siteGroundLevel();
     // orientation is the compass bearing the FRONT facade faces, 0 = north.
     // Unturned, the front looks down +z, which is south — so south is the
     // no-rotation case and everything else is measured from there.

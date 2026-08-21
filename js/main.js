@@ -15,6 +15,7 @@ import { initSplitters } from './splitters.js';
 import { interpretCommand, hasAI } from './chat.js';
 import { gptBuildMasses, hasGPT } from './openai.js';
 import { buildWithProtocol, fastBuild, quickCorrect } from './builder.js';
+import { scoreAgainst } from './score.js';
 import { hasClaude, claudeConfig } from './claudecore.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
@@ -521,8 +522,21 @@ let conceptURL = null;
 async function correctionPasses(v, io, busy) {
   const target = v.targetURL || lastSketchShot;
   let masses = v.masses, camera = v.camera;
+
+  // The gate. A correction is a proposal, not a fact: it is applied, measured,
+  // and kept only if the likeness actually improved. Without this, a pass that
+  // makes things worse is indistinguishable from one that helps — which is the
+  // documented default behaviour of a model correcting its own work.
+  const measure = async () => {
+    try { return (await scoreAgainst(target, await io.snapshot())).score; }
+    catch { return null; }
+  };
+  await io.apply(masses, camera);
+  let best = await measure();
+  if (best !== null) ui.addChatMsg('ai', `First reading scores ${(best * 100).toFixed(0)}/100 against your drawing.`);
+
   for (let pass = 1; pass <= 2; pass++) {
-    const label = `Pass ${pass + 1} of 3 \u2014 looking at the model beside your sketch\u2026`;
+    const label = `Pass ${pass + 1} of 3 \u2014 measuring the model against your sketch\u2026`;
     ui.veil(true, label);
     if (busy) busy.textContent = label;
     try {
@@ -531,14 +545,24 @@ async function correctionPasses(v, io, busy) {
         masses, metrics: compute(customTypeText), site: siteData.currentRealSite(),
       }).findings;
       const r = await quickCorrect(target, masses, camera, {
-        snapshot: io.snapshot,
-        tiles: io.tiles,
-        auditFindings: findings,
-        model: claudeConfig().model,      // the reading model, not the quick one
+        snapshot: io.snapshot, tiles: io.tiles, auditFindings: findings,
+        model: claudeConfig().model,
       });
-      if (!r) break;                       // it says the panes already agree
-      masses = r.masses;
-      if (r.camera) camera = r.camera;
+      if (!r) break;                                   // it says the panes agree
+
+      await io.apply(r.masses, r.camera || camera);
+      const after = await measure();
+      if (best === null || after === null || after >= best - 0.005) {
+        masses = r.masses;
+        if (r.camera) camera = r.camera;
+        if (after !== null && best !== null) {
+          ui.addChatMsg('ai', `Pass ${pass + 1}: ${(after * 100).toFixed(0)}/100 \u2014 kept${after > best ? ` (up ${((after - best) * 100).toFixed(0)})` : ''}.`);
+        }
+        if (after !== null) best = Math.max(best ?? 0, after);
+      } else {
+        ui.addChatMsg('ai', `Pass ${pass + 1} scored ${(after * 100).toFixed(0)}/100 against ${(best * 100).toFixed(0)} \u2014 discarded, the previous version was closer.`);
+        break;                                         // it is drifting; stop
+      }
     } catch (e) {
       console.warn('correction pass ' + pass + ' failed', e);
       break;

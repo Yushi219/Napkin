@@ -24,6 +24,7 @@ import {
   massExtents, geometryAudit, cropReferenceImage, zoomTiles, silhouetteMetrics,
 } from './interpret.js';
 import { claudeToolCall, claudeTurn, hasClaude, claudeConfig } from './claudecore.js';
+import { scoreAgainst, measurementReport } from './score.js';
 
 // Claude is not strict-validated the way OpenAI is, so demand only the core
 // fields and let sanitizeMasses fill the rest with sane defaults.
@@ -140,48 +141,63 @@ const CORRECT_TOOL = {
 // The one thing that ruins a comparison silently is the CAMERA: judged from
 // the wrong angle, correct geometry reads as wrong and gets "fixed" into
 // something worse. So the camera is the first thing this pass is asked about.
+// One look, one correction — but the looking is now done by arithmetic, and
+// the model is handed measurements rather than asked for a judgement.
+//
+// Two changes from the obvious design, both from the evidence: the reference
+// and the render go as SEPARATE images (a single composite costs vision models
+// several points of spatial accuracy — they spend the effort telling the two
+// scenes apart), and the prompt carries a measurement report instead of an
+// invitation to criticise. Being challenged makes a model change things
+// whether or not they were wrong; being given numbers makes it act on them.
 export async function quickCorrect(targetURL, masses, camera, io) {
   const shot = await io.snapshot();
-  const pair = (await pairPicture(targetURL, shot)) || (await claudeImage(shot));
   const geo = geometryAudit(masses);
+  let measured = null;
+  try { measured = await scoreAgainst(targetURL, shot); } catch (e) { console.warn('scoring failed', e); }
+
   const flagged = (io.auditFindings || []).filter(x => x.severity !== 'minor');
   const auditText = flagged.length
-    ? '\n\nThe structural and code audit on this scene reports:\n'
+    ? '\n\nThe structural audit on this scene reports:\n'
       + flagged.map(x => `- [${x.severity}] ${x.domain}/${x.where}: ${x.issue} \u2192 ${x.fix}`).join('\n')
       + '\nFix these too, without losing the likeness.'
     : '';
 
   const content = [
-    { type: 'text', text: 'Current scene: ' + JSON.stringify(masses)
-      + '\nCamera: ' + JSON.stringify(camera || {})
-      + '\n' + geo.summary + auditText },
-    pair,
+    { type: 'text', text: 'THE REFERENCE \u2014 the drawing this must become:' },
+    await claudeImage(targetURL),
+    { type: 'text', text: 'THE CURRENT MODEL, rendered from its declared camera:' },
+    await claudeImage(shot),
   ];
-  // the enlarged reference halves ride along on a deliberate pass: counting
-  // storey lines and fin rhythms is what the small pane cannot carry
   if (io.tiles) {
     for (const t of io.tiles) {
-      content.push({ type: 'text', text: 'REFERENCE, ' + t.label }, await claudeImage(t.url));
+      content.push({ type: 'text', text: 'THE REFERENCE, ' + t.label }, await claudeImage(t.url));
     }
   }
-  content.push({ type: 'text', text: `Work in this order.
+  content.push({ type: 'text', text:
+    'Current scene: ' + JSON.stringify(masses)
+    + '\nCamera: ' + JSON.stringify(camera || {})
+    + '\n' + geo.summary + auditText
+    + (measured ? '\n\n' + measurementReport(measured) : '')
+    + `
 
-1. CAMERA FIRST. Is the right pane seen from the same angle as the left? If the model looks more from above, lower pitchDeg; if it shows a different pair of faces, move yawDeg. A wrong camera makes correct geometry look wrong \u2014 fix it before judging anything else, and return the corrected camera.
-2. COUNT. Levels, bays, fins, window rows. The enlarged reference is there to be counted off. A rhythm with the wrong count reads wrong at any size.
-3. RELATIONS. What sits on what, what is flush with what, what cantilevers and how far. Touching elements must share coordinates exactly.
-4. OPENINGS. Anything the drawing shows daylight through is kind="void" cut from the volume it crosses \u2014 never a solid block, never four boxes arranged around a gap.
-5. PROPORTION, last. Widths and depths against the counted storeys.
+Work in this order.
 
-Return the COMPLETE corrected scene \u2014 every element, changed or not, keeping each element's repeat block. If it already reads as the same building from the same viewpoint and the audit is quiet, return masses: [].` });
+1. COUNT. Levels, bays, fins, window rows, against the enlarged reference. A rhythm with the wrong count reads wrong at any size.
+2. RELATIONS. What sits on what, what is flush with what, what cantilevers and how far. Touching elements share coordinates exactly.
+3. OPENINGS. Anything the drawing shows daylight through is kind="void" cut from the volume it crosses \u2014 never a solid block, never four boxes around a gap.
+4. PROPORTION, guided by the measurements above. Change what the numbers name; leave what they say is already close.
+
+Keep the composition to its primary masses \u2014 do not add window frames, mullions or panel joints. Return the COMPLETE corrected scene, every element, keeping each element's repeat block. If the measurements are already good and the audit is quiet, return masses: [].` });
 
   const out = await claudeToolCall({
-    system: 'You correct a box reconstruction against its reference drawing. Left pane: the drawing. Right pane: the current model rendered from its declared camera. You are not designing \u2014 you are closing the gap between the two panes.',
+    system: 'You correct a box massing model against the architectural drawing it is meant to be. You are not designing \u2014 you are closing a measured gap.',
     content, tool: CORRECT_TOOL, maxTokens: 8000,
     model: io.model || claudeConfig().reviewerModel,
   }, 'self-check');
   if (!out?.masses?.length) return null;
   const fixed = sanitizeMasses(out.masses);
-  return fixed ? { masses: fixed, camera: out.camera || null } : null;
+  return fixed ? { masses: fixed, camera: out.camera || null, scoreBefore: measured?.score ?? null } : null;
 }
 
 // ---------- stage 1: forensics ----------
