@@ -1,31 +1,21 @@
 // The auditor. A drawing becomes a model; this is where the model becomes an
-// argument. Three domains of checks, every finding in the shared grammar
-// { severity, domain, where, issue, fix }, every one recomputed the moment a
-// parameter moves:
+// argument. Rebuilt on the constructability research (sources in
+// SKILL-reconstruction.md): every threshold is cited or explicitly labelled a
+// heuristic, structural proportion rules never run on detail-tier texture,
+// findings are grouped by root cause and ranked by consequence — cost of the
+// fix × how much of the building rides on the error × how sure the check is.
 //
-//   STRUCTURE — cantilever reach, slenderness, bearing area, load path,
-//               members asked to carry volumes
-//   CODE      — advisory checks graded against the pinned site's own context
-//               (height vs the measured neighbourhood, plan depth, egress
-//               reach), honestly labelled heuristics, not legal text
-//   CLIMATE   — carbon and energy against type benchmarks
-//
-// Severity is the same scale the build protocol uses: blocker (red) — the
-// scheme has a structural or legal problem to resolve; major (orange) — needs
-// attention before this goes further; minor (yellow) — worth knowing.
+// Two kinds of claim, never merged: FACTS (rigid-body geometry — floats,
+// unreachable ground, resultant off the support; confidence 1.0) and
+// HEURISTICS (span-to-depth, daylight depth; the real structure is unknown at
+// massing, so these are proportion advice, confidence ~0.5, and say so).
 
 export const AUDIT_COLORS = { blocker: 0xd4453a, major: 0xe08a3c, minor: 0xd9b545 };
 
-
-// ---------------- what is actually holding this up ----------------
-// The old checks read the `on` field and believed it. A volume could sit
-// twenty metres up, forty metres from anything, declare "ground", and pass —
-// which is exactly what happened. Nothing here reads a declaration: support
-// is measured by looking down from each element's underside at what is
-// physically there, and then asking whether that chain reaches the ground.
-
 const CONTACT_GAP = 0.12;      // m — a seam this fine is a joint, not a gap
-const MIN_BEARING = 0.15;      // of footprint area, below which it is hanging
+
+const tierOf = m => m.tier || (m.kind === 'member' ? 'detail'
+  : (m.kind === 'slab' || ['canopy', 'roof', 'balcony', 'frame', 'screen'].includes(m.role) ? 'secondary' : 'primary'));
 
 function footprintOverlap(a, b) {
   const ox = Math.min(a.x + a.w / 2, b.x + b.w / 2) - Math.max(a.x - a.w / 2, b.x - b.w / 2);
@@ -33,8 +23,10 @@ function footprintOverlap(a, b) {
   return ox > 0 && oz > 0 ? ox * oz : 0;
 }
 
-// For every element: who is genuinely underneath it, touching it, and how much
-// of its underside they cover. Declarations are ignored entirely.
+// ---------------- what is actually holding this up ----------------
+// Nothing here reads a declaration: support is measured by looking down from
+// each element's underside at what is physically there, then walking that
+// chain to the ground.
 export function supportAnalysis(masses) {
   const info = new Map();
   for (const m of masses) {
@@ -54,10 +46,9 @@ export function supportAnalysis(masses) {
       carriers.push({ id: c.id, area: ov });
       covered += ov;
     }
+    carriers.sort((a, b) => b.area - a.area);
     info.set(m.id, { onGround: false, carriers, coverage: Math.min(1, covered / area), area });
   }
-
-  // A carrier is only real if it is itself carried, all the way to the ground.
   const grounded = new Set();
   let changed = true;
   while (changed) {
@@ -72,53 +63,155 @@ export function supportAnalysis(masses) {
   return info;
 }
 
-function supportChecks(masses) {
-  const F = [];
-  if (!masses?.length) return F;
-  const f = (severity, where, issue, fix, why) => F.push({ severity, domain: 'structure', where, issue, fix, why });
-  const info = supportAnalysis(masses);
-  const byId = new Map(masses.map(m => [m.id, m]));
-
+// How much of the building rides on each element: walk every element's mass
+// down its primary carrier chain. An error in something carrying 60% of the
+// assembly outranks the same error in a fin carrying nothing.
+function loadFractions(masses, info) {
+  const carried = new Map(masses.map(m => [m.id, 0]));
+  let total = 0;
   for (const m of masses) {
     if (m.kind === 'void') continue;
+    const v = m.w * m.d * m.h * (m.repeat ? m.repeat.count : 1);
+    total += v;
+    let cur = m, guard = 0;
+    while (guard++ < 40) {
+      carried.set(cur.id, (carried.get(cur.id) || 0) + v);
+      const it = info.get(cur.id);
+      if (!it || it.onGround || !it.carriers.length) break;
+      const next = masses.find(x => x.id === it.carriers[0].id);
+      if (!next) break;
+      cur = next;
+    }
+  }
+  const frac = new Map();
+  for (const [id, v] of carried) frac.set(id, total ? v / total : 0);
+  return frac;
+}
+
+// ---------------- the checks ----------------
+// Each finding: { rule, severity, domain, where, issue, fix, why, conf, cost }
+//   conf: 1.0 = geometric fact · ~0.5 = proportion heuristic (say so in why)
+//   cost: 4 = envelope/system must change · 3 = adds a named element
+//         2 = resize/move one element · 1 = fix the model, not the building
+
+function allChecks(masses, metrics, site) {
+  const F = [];
+  const f = (rule, severity, domain, where, issue, fix, why, conf, cost) =>
+    F.push({ rule, severity, domain, where, issue, fix, why, conf, cost });
+  if (!masses?.length) return F;
+
+  const info = supportAnalysis(masses);
+  const byId = new Map(masses.map(m => [m.id, m]));
+  const solids = masses.filter(m => m.kind !== 'void');
+
+  for (const m of solids) {
+    const tier = tierOf(m);
     const it = info.get(m.id);
-    if (it.onGround) continue;
 
-    if (!it.carriers.length) {
-      f('blocker', m.id, `floats ${m.y.toFixed(1)} m up with nothing beneath it`,
-        'put it on something, or bring something under it',
-        `Looking straight down from this element's underside at ${m.y.toFixed(1)} m, no other solid is within ${CONTACT_GAP} m of it or passing through that level. It declares "${m.on || 'ground'}" as its support, but nothing is there — the declaration and the geometry disagree, and the geometry is what gets built.`);
-      continue;
-    }
-    if (!it.grounded) {
-      const chain = it.carriers.map(c => c.id).join(', ');
-      f('blocker', m.id, `rests on ${chain}, which reaches nothing solid`,
-        'ground the chain beneath it',
-        `Support was traced downward element by element and never reached grade. Whatever holds this up is itself unsupported, so the whole group is floating together.`);
-      continue;
-    }
-    if (it.coverage < MIN_BEARING) {
-      f('blocker', m.id, `only ${(it.coverage * 100).toFixed(0)}% of its underside touches anything`,
-        'widen the overlap or add columns beneath',
-        `Measured contact area is ${(it.coverage * it.area).toFixed(1)} m² of a ${it.area.toFixed(1)} m² footprint. Below roughly a fifth there is no plausible load path: what remains is a cantilever, and it must be designed as one.`);
+    // ---- support facts: every tier, because floating is floating ----
+    if (!it.onGround) {
+      if (!it.carriers.length) {
+        f('float', 'blocker', 'structure', m.id,
+          `floats ${m.y.toFixed(1)} m up with nothing beneath it`,
+          'put it on something, or bring something under it',
+          `Looking straight down from this element's underside, no other solid is within ${CONTACT_GAP} m or passing through that level. It declares "${m.on || 'ground'}", but nothing is there — geometry outranks the label. Rigid-body fact.`, 1.0, 2);
+        continue;
+      }
+      if (!it.grounded) {
+        f('chain', 'blocker', 'structure', m.id,
+          `rests on ${it.carriers.map(c => c.id).join(', ')}, which reaches nothing solid`,
+          'ground the chain beneath it',
+          'Support was traced element by element and never reached grade — whatever holds this up is itself unsupported. Rigid-body fact.', 1.0, 2);
+        continue;
+      }
+      // resultant off the support: the check that actually distinguishes a
+      // buildable overhang from an unbuildable one (replaces the old
+      // contact-area complaint, which merely described cantilevers)
+      const sup = byId.get(it.carriers[0].id);
+      if (sup && tier !== 'detail') {
+        const ex = Math.abs(m.x - sup.x) / Math.max(0.5, sup.w / 2);
+        const ez = Math.abs(m.z - sup.z) / Math.max(0.5, sup.d / 2);
+        if (Math.max(ex, ez) > 1.0) {
+          f('resultant', 'blocker', 'structure', m.id,
+            `its weight lands outside ${sup.id} entirely`,
+            'centre it over the support, or add a second one',
+            `The centroid of this element sits ${Math.max(ex, ez) > 1 ? 'beyond' : 'at'} the edge of the only thing carrying it. Statics: a load whose resultant falls outside its support rotates off it. Rigid-body fact.`, 1.0, 2);
+        }
+        // cantilever proportion — ACI deemed-to-satisfy: beam l/8, slab l/10
+        const reach = Math.max(
+          (m.x + m.w / 2) - (sup.x + sup.w / 2), (sup.x - sup.w / 2) - (m.x - m.w / 2),
+          (m.z + m.d / 2) - (sup.z + sup.d / 2), (sup.z - sup.d / 2) - (m.z - m.d / 2), 0);
+        const limit = m.kind === 'slab' ? 10 : 8;
+        if (reach > 0.5 && m.h > 0.05 && reach / m.h > limit) {
+          f('cantilever', reach / m.h > limit * 2 ? 'blocker' : 'major', 'structure', m.id,
+            `cantilevers ${reach.toFixed(1)} m on a ${m.h.toFixed(1)} m depth — ${(reach / m.h).toFixed(0)}:1 against a ${limit}:1 rule`,
+            `deepen it to ~${(reach / limit).toFixed(1)} m, pull it back, or accept a visible transfer`,
+            `Proportion heuristic, not analysis: ACI 318's deemed-to-satisfy minimum depth is span/${limit} for a concrete ${m.kind === 'slab' ? 'cantilever slab (Table 7.3.1.1)' : 'cantilever beam (Table 9.3.1.1)'}. The real structure is unknown at massing; treat this as advice about proportions.`, 0.5, 3);
+        }
+        // transfer trigger — the chain passes through a slab or member
+        if ((sup.kind === 'slab' || sup.kind === 'member') && tier === 'primary') {
+          f('transfer', 'major', 'structure', m.id,
+            `a primary mass carried by a ${sup.kind} (${sup.id})`,
+            'land it on a volume, or name the transfer structure',
+            'ASCE 7 §12.3.3.3: elements supporting discontinuous walls or frames take amplified seismic design forces — a transfer is a named, costly component, not an accident.', 0.9, 3);
+        }
+      }
     }
 
-    // the declaration is worth checking against the truth, as a second finding
-    const declared = m.on && m.on !== 'ground' ? m.on : null;
-    if (declared && byId.has(declared) && !it.carriers.some(c => c.id === declared)) {
-      f('major', m.id, `says it sits on ${declared}, but does not touch it`,
-        `point "on" at ${it.carriers[0]?.id || 'what is really beneath it'}`,
-        `The declared support is not among the elements physically under this one. Downstream tools — the exports, the parametric rebuild — follow the declaration, so it has to be true.`);
+    if (tier === 'detail') continue;   // texture answers only for floating
+
+    // ---- habitability facts and heuristics: primary volumes ----
+    if (tier === 'primary' && m.kind === 'volume') {
+      const storeys = m.storeys || Math.max(1, Math.round(m.h / 3.2));
+      const ff = m.h / storeys;
+      if (ff < 2.6) {
+        f('headroom', 'blocker', 'code', m.id,
+          `${ff.toFixed(2)} m floor-to-floor over ${storeys} storey${storeys > 1 ? 's' : ''} — below what a ceiling can clear`,
+          'fewer storeys in this height, or more height',
+          'IBC §1208.2 requires 2286 mm clear in occupiable rooms; with any structure and finish at all, floor-to-floor under ~2.6 m is physically impossible. Hard code minimum.', 1.0, 4);
+      }
+      const depth = Math.min(m.w, m.d);
+      if (depth > 24) {
+        f('daylight', 'major', 'code', m.id,
+          `${depth.toFixed(0)} m plan depth — the middle is beyond daylight from either side`,
+          'cut a court or atrium through it, or split the volume',
+          'Daylit depth from one facade runs ~2–2.5× the window head height (Lynes rule; ASHRAE 90.1 is stricter). Double-aspect plates work to ~13.5 m naturally lit (SteelConstruction.info); at twice that, the core of the plan is permanently electric-lit. Heuristic — deep plans are legal, just costly.', 0.6, 4);
+      } else if (depth > 13.5) {
+        f('daylight', 'minor', 'code', m.id,
+          `${depth.toFixed(0)} m plan depth — past the naturally-lit limit`,
+          'interior uses only at the centre',
+          'Naturally lit and ventilated office plates run to about 13.5 m (SteelConstruction.info). Beyond that the middle band needs electric light all day. Heuristic.', 0.6, 2);
+      }
+      // egress lower bound: emitted only when NO core layout could save it
+      const halfDiag = Math.hypot(m.w, m.d) / 2;
+      const limitM = 91.4;   // IBC Table 1017.2, Group B sprinklered (300 ft)
+      if (halfDiag > limitM) {
+        f('egress', 'blocker', 'code', m.id,
+          `~${halfDiag.toFixed(0)} m from centre to edge — beyond any permissible travel distance`,
+          'this plate must be split; no stair layout rescues it',
+          `Half the plan diagonal is the shortest possible worst-case travel path, whatever the core layout. IBC Table 1017.2 allows at most ${limitM} m (Group B, sprinklered). When even the lower bound exceeds the limit, the plate itself is the problem. Geometric fact about a code number.`, 0.9, 4);
+      }
+    }
+
+    // slenderness: primary volumes only — a member's plan size is line weight
+    if (tier === 'primary' && m.kind === 'volume') {
+      const slender = m.h / Math.max(0.1, Math.min(m.w, m.d));
+      if (slender > 14) {
+        f('slender', 'major', 'structure', m.id,
+          `slenderness ${slender.toFixed(0)}:1`,
+          'thicken the plan, brace it, or lower it',
+          'Proportion heuristic: habitable towers rarely stand past ~10–12:1 without outriggers or a heavy core, and nothing at massing stage says which this has.', 0.5, 3);
+      }
     }
   }
 
-  // overturning: the whole assembly's centre of mass against its ground patch
-  const solids = masses.filter(m => m.kind !== 'void');
+  // ---- assembly facts: exactly one finding each, ever ----
   if (solids.length > 1) {
-    let mass = 0, cx = 0, cz = 0;
-    for (const m of solids) { const v = m.w * m.d * m.h; mass += v; cx += m.x * v; cz += m.z * v; }
-    cx /= mass || 1; cz /= mass || 1;
-    const feet = solids.filter(m => info.get(m.id).onGround);
+    const info2 = info;
+    let vol = 0, cx = 0, cz = 0;
+    for (const m of solids) { const v = m.w * m.d * m.h; vol += v; cx += m.x * v; cz += m.z * v; }
+    cx /= vol || 1; cz /= vol || 1;
+    const feet = solids.filter(m => info2.get(m.id).onGround);
     if (feet.length) {
       const minX = Math.min(...feet.map(m => m.x - m.w / 2)), maxX = Math.max(...feet.map(m => m.x + m.w / 2));
       const minZ = Math.min(...feet.map(m => m.z - m.d / 2)), maxZ = Math.max(...feet.map(m => m.z + m.d / 2));
@@ -126,126 +219,97 @@ function supportChecks(masses) {
       const outZ = cz < minZ ? minZ - cz : cz > maxZ ? cz - maxZ : 0;
       const out = Math.hypot(outX, outZ);
       if (out > 0.01) {
-        f('blocker', 'building', `centre of mass falls ${out.toFixed(1)} m outside everything touching the ground`,
+        f('overturn', 'blocker', 'structure', 'building',
+          `centre of mass falls ${out.toFixed(1)} m outside everything touching the ground`,
           'widen the base, or bring the upper mass back over it',
-          `The combined centre of mass sits at (${cx.toFixed(1)}, ${cz.toFixed(1)}); the ground contact spans x ${minX.toFixed(1)}…${maxX.toFixed(1)}, z ${minZ.toFixed(1)}…${maxZ.toFixed(1)}. A body whose centre of mass is outside its base overturns — no amount of structure inside the building prevents it, only a wider foundation or ballast.`);
-      } else {
-        const marginX = Math.min(cx - minX, maxX - cx), marginZ = Math.min(cz - minZ, maxZ - cz);
-        const span = Math.min(maxX - minX, maxZ - minZ);
-        const margin = Math.min(marginX, marginZ) / Math.max(1, span / 2);
-        if (margin < 0.15) {
-          f('major', 'building', `centre of mass sits near the edge of the base`,
-            'widen the base or rebalance the upper volumes',
-            `The centre of mass is only ${(margin * 100).toFixed(0)}% of the half-base from its nearest edge. Stability against wind and eccentric live load normally wants a good deal more margin than that.`);
-        }
+          'A body whose centre of mass sits outside its base overturns — no structure inside the building prevents it, only a wider foundation or ballast. Rigid-body fact.', 1.0, 4);
+      }
+    }
+    // vertical geometric irregularity (ASCE 7 Table 12.3-2 Type 3): a storey
+    // more than 1.3× the width of the one carrying it
+    for (const m of solids) {
+      const it = info2.get(m.id);
+      if (it.onGround || !it.carriers.length || tierOf(m) !== 'primary') continue;
+      const sup = byId.get(it.carriers[0].id);
+      if (sup && tierOf(sup) === 'primary' && Math.max(m.w / sup.w, m.d / sup.d) > 1.3) {
+        f('irregular', 'minor', 'structure', m.id,
+          `${Math.max(m.w / sup.w, m.d / sup.d).toFixed(1)}× wider than ${sup.id} below it`,
+          'expect the seismic design to treat this as a vertical irregularity',
+          'ASCE 7 Table 12.3-2 Type 3: a lateral-system dimension over 130% of the adjacent storey is a vertical geometric irregularity. The threshold is genuinely geometric, so it applies even to boxes.', 0.9, 2);
       }
     }
   }
-  return F;
-}
 
-// ---------------- structure ----------------
-
-function structureChecks(masses) {
-  const F = [];
-  if (!masses?.length) return F;
-  const byId = new Map(masses.map(m => [m.id, m]));
-  const f = (severity, where, issue, fix, why) => F.push({ severity, domain: 'structure', where, issue, fix, why });
-
-  for (const m of masses) {
-    const isMember = m.kind === 'member';
-    const sup = m.on && m.on !== 'ground' ? byId.get(m.on) : null;
-
-    // slenderness: a tall thin volume with nothing bracing it
-    if (!isMember) {
-      const slender = m.h / Math.max(0.1, Math.min(m.w, m.d));
-      if (slender > 14) f('blocker', m.id, `slenderness ${slender.toFixed(0)}:1 — beyond what a plain structure stabilises`, 'thicken the plan, brace it, or lower it', `Height ${m.h.toFixed(1)} m against a least plan dimension of ${Math.min(m.w, m.d).toFixed(1)} m. Unbraced masonry and frame construction is normally kept under about 10:1; past ~14:1 a plain floor-plate structure cannot resist wind sway without a core or outriggers.`);
-      else if (slender > 9) f('major', m.id, `slenderness ${slender.toFixed(0)}:1`, 'expect bracing or a core', `Height ${m.h.toFixed(1)} m over a ${Math.min(m.w, m.d).toFixed(1)} m least dimension. Buildable, but it stops being a stack of floor plates \u2014 it needs a shear core, braced bay or outrigger to hold the top still.`);
-    }
-
-    if (sup) {
-      // bearing against the DECLARED support still matters for the cantilever
-      // reading; whether anything is really underneath is settled in
-      // supportChecks, which looks rather than reads.
-      const ox = Math.max(0, Math.min(m.x + m.w / 2, sup.x + sup.w / 2) - Math.max(m.x - m.w / 2, sup.x - sup.w / 2));
-      const oz = Math.max(0, Math.min(m.z + m.d / 2, sup.z + sup.d / 2) - Math.max(m.z - m.d / 2, sup.z - sup.d / 2));
-      const share = (ox * oz) / Math.max(0.01, m.w * m.d);
-      const reach = Math.max(
-        (m.x + m.w / 2) - (sup.x + sup.w / 2), (sup.x - sup.w / 2) - (m.x - m.w / 2),
-        (m.z + m.d / 2) - (sup.z + sup.d / 2), (sup.z - sup.d / 2) - (m.z - m.d / 2), 0);
-      if (share < 0.18) f('blocker', m.id, `only ${(share * 100).toFixed(0)}% of its plan bears on ${sup.id}`, 'enlarge the overlap or add a column line', `Plan overlap with ${sup.id} is ${(ox * oz).toFixed(1)} m\u00b2 of this volume's ${(m.w * m.d).toFixed(1)} m\u00b2 footprint. Below roughly a fifth, the load has no path down: what is left is a cantilever pretending to be a bearing wall.`);
-      else if (share < 0.4 && !m.cantilever) f('major', m.id, `${(share * 100).toFixed(0)}% bearing on ${sup.id} without being declared a cantilever`, 'declare the cantilever or centre it', `${(ox * oz).toFixed(1)} m\u00b2 of ${(m.w * m.d).toFixed(1)} m\u00b2 bears on ${sup.id}. Under about 40% the overhang governs the design of every floor beam, so it should be modelled and costed as a cantilever rather than as a wall on a wall.`);
-      if (reach > 12) f('blocker', m.id, `cantilevers ${reach.toFixed(1)} m past ${sup.id} — transfer-structure territory`, 'pull it back or accept a visible truss', `${reach.toFixed(1)} m clear of ${sup.id}. Concrete and steel floor cantilevers are ordinarily kept near a third of the backspan; past about 12 m the moment needs a storey-deep transfer truss or post-tensioning, which is a structural decision, not a detail.`);
-      else if (reach > 6) f('major', m.id, `cantilevers ${reach.toFixed(1)} m past ${sup.id}`, 'expect a storey-deep beam or diagonal', `${reach.toFixed(1)} m past ${sup.id}. A cantilever of this reach needs a beam roughly a tenth to a twelfth of its span in depth \u2014 around ${(reach / 11).toFixed(1)} m \u2014 so it will read on the elevation.`);
-      // a member asked to carry a volume
-      if (sup.kind === 'member' && !isMember) {
-        const span = Math.max(sup.w, sup.d);
-        f(span > 8 ? 'blocker' : 'major', m.id, `a ${Math.min(sup.w, sup.d).toFixed(1)} m member carries this volume`, 'thicken the support or add posts', `${sup.id} is ${Math.min(sup.w, sup.d).toFixed(2)} m in its least dimension and is carrying a volume of ${(m.w * m.d * m.h).toFixed(0)} m\u00b3. Members are sized for their own weight and a rail load, not a floor above.`);
-      }
-    }
-
-    // stacking weight: something heavier perched on something much smaller
-    if (sup && !isMember && sup.kind !== 'member') {
-      const areaRatio = (m.w * m.d) / Math.max(0.1, sup.w * sup.d);
-      if (areaRatio > 2.2) f('major', m.id, `plan ${areaRatio.toFixed(1)}× its support ${sup.id}`, 'mushrooming this hard needs a transfer level', `${(m.w * m.d).toFixed(0)} m\u00b2 sitting on ${(sup.w * sup.d).toFixed(0)} m\u00b2. Every column above has to find one below; past roughly twice the area that means a transfer slab or truss, which is expensive and thick.`);
-    }
+  // ---- climate: unchanged benchmarks ----
+  if (metrics) {
+    const carbon = +metrics.carbon || 0, energy = +metrics.eui || 0;
+    if (carbon > 800) f('carbon', 'major', 'climate', 'building', `${carbon.toFixed(0)} kgCO₂e/m² embodied — well over common 2030 targets (~600)`, 'timber structure, less transfer, more repetition', 'Benchmark comparison against published embodied-carbon targets for the type.', 0.7, 3);
+    else if (carbon > 620) f('carbon', 'minor', 'climate', 'building', `${carbon.toFixed(0)} kgCO₂e/m² embodied`, 'the structure line in the dashboard is where it hides', 'Benchmark comparison.', 0.7, 2);
+    if (energy > 160) f('energy', 'major', 'climate', 'building', `${energy.toFixed(0)} kWh/m²y — roughly double a good envelope`, 'compactness and glazing ratio first', 'Benchmark comparison against typical good-practice EUI for the type.', 0.7, 3);
+    else if (energy > 110) f('energy', 'minor', 'climate', 'building', `${energy.toFixed(0)} kWh/m²y operational`, 'consider the surface-to-volume ratio', 'Benchmark comparison.', 0.7, 2);
   }
-  return F;
-}
 
-// ---------------- code (advisory, site-aware) ----------------
-
-function codeChecks(masses, metrics, site) {
-  const F = [];
-  if (!masses?.length) return F;
-  const f = (severity, where, issue, fix, why) => F.push({ severity, domain: 'code', where, issue, fix, why });
-  const top = Math.max(...masses.map(m => m.y + m.h));
-
-  // context height: graded against the measured neighbourhood when one exists
+  // context height, when a real neighbourhood exists
   if (site?.buildings?.length) {
+    const top = Math.max(...solids.map(m => m.y + m.h));
     const hs = site.buildings.map(b => b.h).sort((a, b) => a - b);
     const tallest = hs[hs.length - 1];
-    const median = hs[Math.floor(hs.length / 2)];
-    if (top > tallest * 1.6) f('major', 'building', `${top.toFixed(0)} m against a tallest neighbour of ${tallest.toFixed(0)} m — expect contextual-height review`, 'step the upper storeys back or down', `Measured from the ${site.buildings.length} buildings OpenStreetMap holds around this parcel: tallest ${tallest.toFixed(0)} m, median ${median.toFixed(0)} m. Contextual-height provisions in most cities test against exactly this comparison.`);
-    else if (top > median * 2.6) f('minor', 'building', `${top.toFixed(0)} m over a ${median.toFixed(0)} m median context`, 'check the district height map', `The measured median around this parcel is ${median.toFixed(0)} m across ${site.buildings.length} buildings. Not a violation \u2014 a flag that the district plan is worth reading before this height is fixed.`);
-  } else if (top > 60) {
-    f('minor', 'building', `${top.toFixed(0)} m with no site pinned — height unchecked against any district`, 'pin the project site to grade this properly', 'Height limits are always local. Without a pinned site there is no measured neighbourhood to compare against, so this is only a note that the question is unanswered.');
+    if (top > tallest * 1.6) {
+      f('context', 'major', 'code', 'building',
+        `${top.toFixed(0)} m against a tallest neighbour of ${tallest.toFixed(0)} m`,
+        'step the upper storeys back or down',
+        `Graded against the ${site.buildings.length} measured buildings around the pinned site — contextual-height review territory in most jurisdictions. Advisory.`, 0.7, 3);
+    }
   }
-
-  // deep plans: daylight and egress heuristics
-  for (const m of masses) {
-    if (m.kind === 'member') continue;
-    const minPlan = Math.min(m.w, m.d);
-    if (minPlan > 36) f('major', m.id, `${minPlan.toFixed(0)} m deep plan — the middle is beyond daylight and likely beyond one egress run`, 'court, atrium, or split the volume', `Least plan dimension ${minPlan.toFixed(0)} m, so the deepest interior point is about ${(minPlan / 2).toFixed(0)} m from a facade. Useful daylight reaches roughly twice the head height \u2014 about 7 m \u2014 and common single-direction travel limits are shorter than this.`);
-    else if (minPlan > 24) f('minor', m.id, `${minPlan.toFixed(0)} m plan depth`, 'interior uses only at the core', `${minPlan.toFixed(0)} m deep, so about ${(minPlan / 2).toFixed(0)} m from facade to centre. Beyond roughly 12 m the middle is permanently artificially lit \u2014 fine for plant, stores and circulation, poor for occupied rooms.`);
-    const diag = Math.hypot(m.w, m.d) / 2;
-    if (diag > 45) f('major', m.id, `~${diag.toFixed(0)} m from centre to exit — over common single-exit travel limits`, 'add a second stair', `Half-diagonal is ${diag.toFixed(0)} m, the worst case walk to a single exit. Codes commonly cap single-exit travel between 20 and 45 m depending on use and sprinklers, so this plan almost certainly needs a second stair.`);
-  }
-
-  // whether anything meets the ground is answered properly in supportChecks
   return F;
 }
 
-// ---------------- climate ----------------
+// ---------------- grouping and ranking ----------------
+// One authored decision, one finding. Root causes swallow their consequences.
+// Rank by what the error costs × how much rides on it × how sure the check is.
 
-function climateChecks(metrics) {
-  const F = [];
-  if (!metrics) return F;
-  const f = (severity, where, issue, fix, why) => F.push({ severity, domain: 'climate', where, issue, fix, why });
-  const carbon = +metrics.carbon || 0;
-  const energy = +metrics.eui || 0;
-  if (carbon > 800) f('major', 'building', `${carbon.toFixed(0)} kgCO₂e/m² embodied — well over common 2030 targets (~600)`, 'timber structure, less transfer, more repetition', `${carbon.toFixed(0)} kgCO\u2082e/m\u00b2 upfront. LETI and RIBA 2030 targets sit near 300\u2013600 for most types; transfer structure, deep cantilevers and one-off geometry are where the excess usually is.`);
-  else if (carbon > 620) f('minor', 'building', `${carbon.toFixed(0)} kgCO₂e/m² embodied`, 'the structure line in the dashboard is where it hides', `${carbon.toFixed(0)} kgCO\u2082e/m\u00b2 upfront, against a common 2030 benchmark around 600. Structure is typically half of it.`);
-  if (energy > 160) f('major', 'building', `${energy.toFixed(0)} kWh/m²y — roughly double a good envelope`, 'compactness and glazing ratio first', `${energy.toFixed(0)} kWh/m\u00b2\u00b7y modelled. A well-insulated envelope of this type lands nearer 70\u201390; surface-to-volume ratio and glazing fraction dominate before any plant is chosen.`);
-  else if (energy > 110) f('minor', 'building', `${energy.toFixed(0)} kWh/m²y operational`, 'consider the surface-to-volume ratio', `${energy.toFixed(0)} kWh/m\u00b2\u00b7y modelled, moderately above a good envelope for this type.`);
-  return F;
+function groupAndRank(findings, masses) {
+  const info = supportAnalysis(masses || []);
+  const mfrac = masses?.length ? loadFractions(masses, info) : new Map();
+  const byId = new Map((masses || []).map(m => [m.id, m]));
+
+  // prototype collapse: same rule on elements of the same kind/role/size is
+  // one decision repeated, not many findings
+  const groups = new Map();
+  for (const x of findings) {
+    const m = byId.get(x.where);
+    const proto = m ? [x.rule, m.kind, m.role, Math.round(m.w * 5), Math.round(m.h * 5)].join('|') : x.rule + '|' + x.where;
+    if (!groups.has(proto)) groups.set(proto, { ...x, count: 1, others: [] });
+    else { const g = groups.get(proto); g.count++; g.others.push(x.where); }
+  }
+  let out = [...groups.values()].map(g => g.count > 1
+    ? { ...g, issue: `${g.count}× ${g.issue}`, where: g.where, fix: g.fix }
+    : g);
+
+  // root-cause collapse: a blocker on a support swallows findings on what it
+  // carries — fix the cause, the consequences follow
+  const blocked = new Set(out.filter(x => x.severity === 'blocker' && ['float', 'chain'].includes(x.rule)).map(x => x.where));
+  if (blocked.size) {
+    out = out.filter(x => {
+      if (blocked.has(x.where)) return true;
+      const it = info.get(x.where);
+      const dependsOnBlocked = it?.carriers?.some(c => blocked.has(c.id));
+      return !dependsOnBlocked || ['float', 'chain'].includes(x.rule);
+    });
+  }
+
+  const rank = { blocker: 0, major: 1, minor: 2 };
+  for (const x of out) {
+    const lf = mfrac.get(x.where) ?? 0.15;
+    x.priority = (x.cost || 2) * (0.3 + 0.7 * lf) * (x.conf || 0.6) * (3 - rank[x.severity]);
+  }
+  out.sort((a, b) => b.priority - a.priority || rank[a.severity] - rank[b.severity]);
+  // the primary view holds a handful of decisions; the rest fold away
+  out.forEach((x, i) => { x.folded = i >= 7; });
+  return out;
 }
-
 
 // ---------------- the review table ----------------
-// The same findings, seated. Each discipline reviews what it is responsible
-// for and speaks in its own voice, so a scheme is not judged by one anonymous
-// list but by the people who would actually be in the room.
 
 export const REVIEWERS = [
   { id: 'structure', name: 'Priya', role: 'Structural engineer',
@@ -259,8 +323,6 @@ export const REVIEWERS = [
     quiet: 'Carbon and energy both sit inside the benchmarks for this type.' },
 ];
 
-// Portraits, drawn rather than fetched: flat, quiet, one silhouette each, told
-// apart by hard hat, collar and headscarf rather than by caricature.
 export const FACES = {
   structure: `<svg viewBox="0 0 48 48" aria-hidden="true">
     <circle cx="24" cy="24" r="23" class="rt-bg"/>
@@ -283,50 +345,45 @@ export const FACES = {
     <path d="M34 15c2.5 2 3.5 5.5 2.5 8.5" class="rt-leaf"/></svg>`,
 };
 
-// What to actually change, in the language of the sliders on screen. Only
-// advice that names a parameter and a direction earns a place — "improve
-// daylight" helps nobody.
+// What to actually change, in the language of the sliders on screen.
 export function optimisationAdvice(findings, masses, metrics) {
   if (!masses?.length) return [];
   const out = [];
   const seen = new Set();
-  const add = (a) => { const k = a.what + a.target; if (!seen.has(k)) { seen.add(k); out.push(a); } };
+  const add = a => { const k = a.what + a.target; if (!seen.has(k)) { seen.add(k); out.push(a); } };
   const byId = new Map(masses.map(m => [m.id, m]));
 
   for (const x of findings) {
     const m = byId.get(x.where);
-    if (/slenderness/.test(x.issue) && m) {
-      const need = +(m.h / 9).toFixed(1);
+    if (x.rule === 'slender' && m) {
+      const need = +(m.h / 10).toFixed(1);
       const grow = +(need - Math.min(m.w, m.d)).toFixed(1);
-      if (grow > 0.1) add({ target: x.where, what: (m.w <= m.d ? 'w' : 'd'),
-        text: `Widen ${x.where}'s ${m.w <= m.d ? 'width' : 'depth'} by ${grow} m (to ${need} m) — that brings slenderness to 9:1, the point where a plain frame stops needing a core.`,
-        severity: x.severity });
+      if (grow > 0.1) add({ target: x.where, what: (m.w <= m.d ? 'w' : 'd'), severity: x.severity,
+        text: `Widen ${x.where}'s ${m.w <= m.d ? 'width' : 'depth'} by ${grow} m (to ${need} m) — slenderness comes back to 10:1.` });
     }
-    if (/bears on|cantilevers/.test(x.issue) && m) {
-      const sup = byId.get(m.on);
+    if ((x.rule === 'resultant' || x.rule === 'cantilever' || x.rule === 'float') && m) {
+      const sup = byId.get(m.on) || null;
       if (sup) {
-        const toward = +( (sup.x - m.x) ).toFixed(1);
-        if (Math.abs(toward) > 0.3) add({ target: x.where, what: 'x',
-          text: `Slide ${x.where} ${Math.abs(toward) > 0 ? (toward > 0 ? 'right' : 'left') : ''} by ${Math.abs(toward).toFixed(1)} m to sit over ${sup.id} — or declare the cantilever and carry a storey-deep beam.`,
-          severity: x.severity });
+        const toward = +(sup.x - m.x).toFixed(1);
+        if (Math.abs(toward) > 0.3) add({ target: x.where, what: 'x', severity: x.severity,
+          text: `Slide ${x.where} ${toward > 0 ? 'right' : 'left'} by ${Math.abs(toward).toFixed(1)} m to sit over ${sup.id} — or name the transfer that carries it.` });
       }
     }
-    if (/plan depth|deep plan/.test(x.issue) && m) {
-      const cut = +(Math.min(m.w, m.d) - 24).toFixed(1);
-      if (cut > 0.5) add({ target: x.where, what: (m.w <= m.d ? 'w' : 'd'),
-        text: `Take ${cut} m off ${x.where}'s ${m.w <= m.d ? 'width' : 'depth'}, or cut a court through it — the middle is past useful daylight.`,
-        severity: x.severity });
+    if (x.rule === 'daylight' && m) {
+      const cut = +(Math.min(m.w, m.d) - 13.5).toFixed(1);
+      if (cut > 0.5) add({ target: x.where, what: (m.w <= m.d ? 'w' : 'd'), severity: x.severity,
+        text: `Take ${cut} m off ${x.where}'s ${m.w <= m.d ? 'width' : 'depth'}, or cut a court through it — daylight runs out 13.5 m in.` });
     }
-    if (/kgCO/.test(x.issue)) add({ target: 'building', what: 'structure',
-      text: `Switch the structure to timber-hybrid in Params — typically 25-40% off upfront carbon before any geometry changes.`,
-      severity: x.severity });
-    if (/kWh/.test(x.issue)) {
+    if (x.rule === 'headroom' && m) add({ target: x.where, what: 'storeys', severity: x.severity,
+      text: `${x.where} holds ${m.storeys} storeys in ${m.h.toFixed(1)} m — drop one storey or raise it to ${(m.storeys * 3.0).toFixed(1)} m.` });
+    if (x.rule === 'carbon') add({ target: 'building', what: 'structure', severity: x.severity,
+      text: `Switch the structure to timber-hybrid in Params — typically 25-40% off upfront carbon before any geometry changes.` });
+    if (x.rule === 'energy') {
       const glassy = masses.filter(v => v.facade === 'glass').length;
-      add({ target: 'building', what: 'facade',
+      add({ target: 'building', what: 'facade', severity: x.severity,
         text: glassy
           ? `${glassy} volume${glassy > 1 ? 's are' : ' is'} fully glazed — moving one or two to slats-v or solid is the cheapest move on the energy line.`
-          : `Compactness governs here: fewer, deeper volumes lower the surface-to-volume ratio more than any envelope spec.`,
-        severity: x.severity });
+          : `Compactness governs here: fewer, deeper volumes lower the surface-to-volume ratio.` });
     }
   }
   const rank = { blocker: 0, major: 1, minor: 2 };
@@ -337,23 +394,16 @@ export function optimisationAdvice(findings, masses, metrics) {
 // ---------------- the audit ----------------
 
 export function runAudit({ masses, metrics, site }) {
-  const findings = [
-    ...supportChecks(masses),
-    ...structureChecks(masses),
-    ...codeChecks(masses, metrics, site),
-    ...climateChecks(metrics),
-  ];
-  const rank = { blocker: 0, major: 1, minor: 2 };
-  findings.sort((a, b) => rank[a.severity] - rank[b.severity]);
+  const raw = allChecks(masses, metrics, site);
+  const findings = groupAndRank(raw, masses);
   const counts = { blocker: 0, major: 0, minor: 0 };
   for (const x of findings) counts[x.severity]++;
-  // per-element worst severity, for the shells
+  const rank = { blocker: 0, major: 1, minor: 2 };
   const worstByElement = {};
   for (const x of findings) {
     if (x.where === 'building') continue;
     if (!(x.where in worstByElement) || rank[x.severity] < rank[worstByElement[x.where]]) worstByElement[x.where] = x.severity;
   }
-  // seat the findings at the table
   const table = REVIEWERS.map(r => ({
     ...r,
     findings: findings.filter(x => r.domains.includes(x.domain)),
