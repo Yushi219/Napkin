@@ -16,6 +16,134 @@
 
 export const AUDIT_COLORS = { blocker: 0xd4453a, major: 0xe08a3c, minor: 0xd9b545 };
 
+
+// ---------------- what is actually holding this up ----------------
+// The old checks read the `on` field and believed it. A volume could sit
+// twenty metres up, forty metres from anything, declare "ground", and pass —
+// which is exactly what happened. Nothing here reads a declaration: support
+// is measured by looking down from each element's underside at what is
+// physically there, and then asking whether that chain reaches the ground.
+
+const CONTACT_GAP = 0.12;      // m — a seam this fine is a joint, not a gap
+const MIN_BEARING = 0.15;      // of footprint area, below which it is hanging
+
+function footprintOverlap(a, b) {
+  const ox = Math.min(a.x + a.w / 2, b.x + b.w / 2) - Math.max(a.x - a.w / 2, b.x - b.w / 2);
+  const oz = Math.min(a.z + a.d / 2, b.z + b.d / 2) - Math.max(a.z - a.d / 2, b.z - b.d / 2);
+  return ox > 0 && oz > 0 ? ox * oz : 0;
+}
+
+// For every element: who is genuinely underneath it, touching it, and how much
+// of its underside they cover. Declarations are ignored entirely.
+export function supportAnalysis(masses) {
+  const info = new Map();
+  for (const m of masses) {
+    const area = Math.max(0.01, m.w * m.d);
+    if (m.y <= CONTACT_GAP) {
+      info.set(m.id, { onGround: true, carriers: [], coverage: 1, area });
+      continue;
+    }
+    const carriers = [];
+    let covered = 0;
+    for (const c of masses) {
+      if (c === m || c.kind === 'void') continue;
+      const top = c.y + c.h;
+      if (Math.abs(top - m.y) > CONTACT_GAP && !(c.y < m.y && top > m.y + 0.01)) continue;
+      const ov = footprintOverlap(m, c);
+      if (ov <= 0.01) continue;
+      carriers.push({ id: c.id, area: ov });
+      covered += ov;
+    }
+    info.set(m.id, { onGround: false, carriers, coverage: Math.min(1, covered / area), area });
+  }
+
+  // A carrier is only real if it is itself carried, all the way to the ground.
+  const grounded = new Set();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const m of masses) {
+      if (grounded.has(m.id)) continue;
+      const it = info.get(m.id);
+      if (it.onGround || it.carriers.some(c => grounded.has(c.id))) { grounded.add(m.id); changed = true; }
+    }
+  }
+  for (const m of masses) info.get(m.id).grounded = grounded.has(m.id);
+  return info;
+}
+
+function supportChecks(masses) {
+  const F = [];
+  if (!masses?.length) return F;
+  const f = (severity, where, issue, fix, why) => F.push({ severity, domain: 'structure', where, issue, fix, why });
+  const info = supportAnalysis(masses);
+  const byId = new Map(masses.map(m => [m.id, m]));
+
+  for (const m of masses) {
+    if (m.kind === 'void') continue;
+    const it = info.get(m.id);
+    if (it.onGround) continue;
+
+    if (!it.carriers.length) {
+      f('blocker', m.id, `floats ${m.y.toFixed(1)} m up with nothing beneath it`,
+        'put it on something, or bring something under it',
+        `Looking straight down from this element's underside at ${m.y.toFixed(1)} m, no other solid is within ${CONTACT_GAP} m of it or passing through that level. It declares "${m.on || 'ground'}" as its support, but nothing is there — the declaration and the geometry disagree, and the geometry is what gets built.`);
+      continue;
+    }
+    if (!it.grounded) {
+      const chain = it.carriers.map(c => c.id).join(', ');
+      f('blocker', m.id, `rests on ${chain}, which reaches nothing solid`,
+        'ground the chain beneath it',
+        `Support was traced downward element by element and never reached grade. Whatever holds this up is itself unsupported, so the whole group is floating together.`);
+      continue;
+    }
+    if (it.coverage < MIN_BEARING) {
+      f('blocker', m.id, `only ${(it.coverage * 100).toFixed(0)}% of its underside touches anything`,
+        'widen the overlap or add columns beneath',
+        `Measured contact area is ${(it.coverage * it.area).toFixed(1)} m² of a ${it.area.toFixed(1)} m² footprint. Below roughly a fifth there is no plausible load path: what remains is a cantilever, and it must be designed as one.`);
+    }
+
+    // the declaration is worth checking against the truth, as a second finding
+    const declared = m.on && m.on !== 'ground' ? m.on : null;
+    if (declared && byId.has(declared) && !it.carriers.some(c => c.id === declared)) {
+      f('major', m.id, `says it sits on ${declared}, but does not touch it`,
+        `point "on" at ${it.carriers[0]?.id || 'what is really beneath it'}`,
+        `The declared support is not among the elements physically under this one. Downstream tools — the exports, the parametric rebuild — follow the declaration, so it has to be true.`);
+    }
+  }
+
+  // overturning: the whole assembly's centre of mass against its ground patch
+  const solids = masses.filter(m => m.kind !== 'void');
+  if (solids.length > 1) {
+    let mass = 0, cx = 0, cz = 0;
+    for (const m of solids) { const v = m.w * m.d * m.h; mass += v; cx += m.x * v; cz += m.z * v; }
+    cx /= mass || 1; cz /= mass || 1;
+    const feet = solids.filter(m => info.get(m.id).onGround);
+    if (feet.length) {
+      const minX = Math.min(...feet.map(m => m.x - m.w / 2)), maxX = Math.max(...feet.map(m => m.x + m.w / 2));
+      const minZ = Math.min(...feet.map(m => m.z - m.d / 2)), maxZ = Math.max(...feet.map(m => m.z + m.d / 2));
+      const outX = cx < minX ? minX - cx : cx > maxX ? cx - maxX : 0;
+      const outZ = cz < minZ ? minZ - cz : cz > maxZ ? cz - maxZ : 0;
+      const out = Math.hypot(outX, outZ);
+      if (out > 0.01) {
+        f('blocker', 'building', `centre of mass falls ${out.toFixed(1)} m outside everything touching the ground`,
+          'widen the base, or bring the upper mass back over it',
+          `The combined centre of mass sits at (${cx.toFixed(1)}, ${cz.toFixed(1)}); the ground contact spans x ${minX.toFixed(1)}…${maxX.toFixed(1)}, z ${minZ.toFixed(1)}…${maxZ.toFixed(1)}. A body whose centre of mass is outside its base overturns — no amount of structure inside the building prevents it, only a wider foundation or ballast.`);
+      } else {
+        const marginX = Math.min(cx - minX, maxX - cx), marginZ = Math.min(cz - minZ, maxZ - cz);
+        const span = Math.min(maxX - minX, maxZ - minZ);
+        const margin = Math.min(marginX, marginZ) / Math.max(1, span / 2);
+        if (margin < 0.15) {
+          f('major', 'building', `centre of mass sits near the edge of the base`,
+            'widen the base or rebalance the upper volumes',
+            `The centre of mass is only ${(margin * 100).toFixed(0)}% of the half-base from its nearest edge. Stability against wind and eccentric live load normally wants a good deal more margin than that.`);
+        }
+      }
+    }
+  }
+  return F;
+}
+
 // ---------------- structure ----------------
 
 function structureChecks(masses) {
@@ -36,7 +164,9 @@ function structureChecks(masses) {
     }
 
     if (sup) {
-      // bearing: how much of this volume actually stands on its support
+      // bearing against the DECLARED support still matters for the cantilever
+      // reading; whether anything is really underneath is settled in
+      // supportChecks, which looks rather than reads.
       const ox = Math.max(0, Math.min(m.x + m.w / 2, sup.x + sup.w / 2) - Math.max(m.x - m.w / 2, sup.x - sup.w / 2));
       const oz = Math.max(0, Math.min(m.z + m.d / 2, sup.z + sup.d / 2) - Math.max(m.z - m.d / 2, sup.z - sup.d / 2));
       const share = (ox * oz) / Math.max(0.01, m.w * m.d);
@@ -92,9 +222,7 @@ function codeChecks(masses, metrics, site) {
     if (diag > 45) f('major', m.id, `~${diag.toFixed(0)} m from centre to exit — over common single-exit travel limits`, 'add a second stair', `Half-diagonal is ${diag.toFixed(0)} m, the worst case walk to a single exit. Codes commonly cap single-exit travel between 20 and 45 m depending on use and sprinklers, so this plan almost certainly needs a second stair.`);
   }
 
-  // ground floor: does anything actually meet the ground
-  const grounded = masses.some(m => m.y < 0.1 && m.kind !== 'member');
-  if (!grounded) f('blocker', 'building', 'nothing occupiable meets the ground', 'someone has to be able to walk in', 'No occupiable volume has its base within 0.1 m of ground level. Either the entrance storey is missing from the model, or the whole building floats.');
+  // whether anything meets the ground is answered properly in supportChecks
   return F;
 }
 
@@ -210,6 +338,7 @@ export function optimisationAdvice(findings, masses, metrics) {
 
 export function runAudit({ masses, metrics, site }) {
   const findings = [
+    ...supportChecks(masses),
     ...structureChecks(masses),
     ...codeChecks(masses, metrics, site),
     ...climateChecks(metrics),
