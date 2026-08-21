@@ -95,6 +95,7 @@ export async function fastBuild(rawTargetURL, io) {
   const out = await claudeToolCall({
     content, tool: FAST_TOOL, maxTokens: 6000,
   }, 'fast build');
+  io.tiles = tiles;                       // reused by every correction pass
   let masses = sanitizeMasses(out.masses);
   if (!masses) throw new Error('the fast build produced no volumes');
   masses = fitToEnvelope(masses, out.envelope);
@@ -115,32 +116,59 @@ const CORRECT_TOOL = {
     type: 'object',
     properties: {
       masses: { type: 'array', items: MASS_SCHEMA },
-      camera: { type: 'object', properties: { yawDeg: { type: 'number' }, pitchDeg: { type: 'number' }, fovDeg: { type: 'number' } } },
+      camera: { type: 'object', description: 'the corrected viewpoint, whenever the panes disagree on angle',
+        properties: { yawDeg: { type: 'number' }, pitchDeg: { type: 'number' }, fovDeg: { type: 'number' } } },
     },
     required: ['masses'],
   },
 };
 
+// One look, one correction. The reference and the current render go up as a
+// single side-by-side, with the enlarged halves of the reference behind it,
+// the measured geometry audit, and the scene as JSON. Everything comes back
+// as a complete scene, so nothing is patched into inconsistency.
+//
+// The one thing that ruins a comparison silently is the CAMERA: judged from
+// the wrong angle, correct geometry reads as wrong and gets "fixed" into
+// something worse. So the camera is the first thing this pass is asked about.
 export async function quickCorrect(targetURL, masses, camera, io) {
   const shot = await io.snapshot();
   const pair = (await pairPicture(targetURL, shot)) || (await claudeImage(shot));
   const geo = geometryAudit(masses);
-  // The structural audit rides along: the same pass that makes it look right
-  // makes it stand up, instead of leaving the user to find both separately.
   const flagged = (io.auditFindings || []).filter(x => x.severity !== 'minor');
   const auditText = flagged.length
     ? '\n\nThe structural and code audit on this scene reports:\n'
-      + flagged.map(x => `- [${x.severity}] ${x.domain}/${x.where}: ${x.issue} → ${x.fix}`).join('\n')
+      + flagged.map(x => `- [${x.severity}] ${x.domain}/${x.where}: ${x.issue} \u2192 ${x.fix}`).join('\n')
       + '\nFix these too, without losing the likeness.'
     : '';
+
+  const content = [
+    { type: 'text', text: 'Current scene: ' + JSON.stringify(masses)
+      + '\nCamera: ' + JSON.stringify(camera || {})
+      + '\n' + geo.summary + auditText },
+    pair,
+  ];
+  // the enlarged reference halves ride along on a deliberate pass: counting
+  // storey lines and fin rhythms is what the small pane cannot carry
+  if (io.tiles) {
+    for (const t of io.tiles) {
+      content.push({ type: 'text', text: 'REFERENCE, ' + t.label }, await claudeImage(t.url));
+    }
+  }
+  content.push({ type: 'text', text: `Work in this order.
+
+1. CAMERA FIRST. Is the right pane seen from the same angle as the left? If the model looks more from above, lower pitchDeg; if it shows a different pair of faces, move yawDeg. A wrong camera makes correct geometry look wrong \u2014 fix it before judging anything else, and return the corrected camera.
+2. COUNT. Levels, bays, fins, window rows. The enlarged reference is there to be counted off. A rhythm with the wrong count reads wrong at any size.
+3. RELATIONS. What sits on what, what is flush with what, what cantilevers and how far. Touching elements must share coordinates exactly.
+4. OPENINGS. Anything the drawing shows daylight through is kind="void" cut from the volume it crosses \u2014 never a solid block, never four boxes arranged around a gap.
+5. PROPORTION, last. Widths and depths against the counted storeys.
+
+Return the COMPLETE corrected scene \u2014 every element, changed or not, keeping each element's repeat block. If it already reads as the same building from the same viewpoint and the audit is quiet, return masses: [].` });
+
   const out = await claudeToolCall({
-    system: 'You correct a box reconstruction against its reference drawing. Left pane: the drawing. Right pane: the current model. Return the COMPLETE corrected masses array — every element, changed or not, preserving the repeat block on any element that has one. If the model already reads as the same building AND the audit is quiet, return masses: [].',
-    content: [
-      { type: 'text', text: 'Current scene: ' + JSON.stringify(masses) + '\n' + geo.summary },
-      pair,
-      { type: 'text', text: 'Judge relations, storey counts, repeated rhythms, openings, silhouette proportion, camera — then the structure. Correct what is wrong.' },
-    ],
-    tool: CORRECT_TOOL, maxTokens: 5000, model: claudeConfig().reviewerModel,
+    system: 'You correct a box reconstruction against its reference drawing. Left pane: the drawing. Right pane: the current model rendered from its declared camera. You are not designing \u2014 you are closing the gap between the two panes.',
+    content, tool: CORRECT_TOOL, maxTokens: 8000,
+    model: io.model || claudeConfig().reviewerModel,
   }, 'self-check');
   if (!out?.masses?.length) return null;
   const fixed = sanitizeMasses(out.masses);

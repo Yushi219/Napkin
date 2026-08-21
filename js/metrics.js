@@ -47,10 +47,30 @@ export function compute(customText = '') {
   const site = getSite();
   const winterAlt = winterNoonAlt(site) * 180 / Math.PI;      // degrees
   const latPenalty = (45 - Math.min(winterAlt, 45)) * 0.42;    // 0 at 45°, ~19 at 0°
+  const facing0 = ((state.orientation % 360) + 360) % 360;
+  const daylightTurn = Math.abs(Math.sin(facing0 * Math.PI / 180)) * 4;   // even glare is worth a point or two
   const daylight = Math.max(5, Math.min(98,
-    82 - (st.plateDepth - 20) * 1.8 + (1 - state.taper) * 18 + state.segments.length * 3 - latPenalty));
+    82 - (st.plateDepth - 20) * 1.8 + (1 - state.taper) * 18 + state.segments.length * 3 - latPenalty - daylightTurn));
   const climate = 1 + (Math.abs(site.lat) - 42) * 0.004 + (Math.abs(site.lat) < 25 ? 0.10 : 0);
-  const eui = t.eui0 * (0.82 + envelopeRatio * 0.55) * climate - (state.greenRoof ? 4 : 0);
+
+  // ---- orientation ----
+  // Turning a building turns its long facade into or away from the sun, and
+  // that is a real energy term, not decoration. The model's front faces +z,
+  // which is south at orientation 0; the slider rotates it clockwise. The
+  // penalty is the classic one: a long facade facing east or west takes low,
+  // unshadeable morning and afternoon sun and drives cooling, while south
+  // (north below the equator) is the easy face to shade. Slender plans care
+  // more than square ones, because they HAVE a long facade to point.
+  const aspect = Math.max(st.bbW, st.bbD) / Math.max(1, Math.min(st.bbW, st.bbD));
+  const elongation = Math.min(1, (aspect - 1) / 2);          // 0 square, 1 at 3:1
+  const facing = ((state.orientation % 360) + 360) % 360;     // 0 = long face south
+  // worst at 90 and 270 (east-west glazing), best at 0 and 180
+  const solarExposure = Math.abs(Math.sin(facing * Math.PI / 180));
+  const southern = site.lat < 0;
+  const hemisphereFlip = southern ? Math.abs(Math.cos(facing * Math.PI / 180)) * 0.06 : 0;
+  const orientPenalty = 1 + elongation * solarExposure * 0.16 + hemisphereFlip;
+
+  const eui = t.eui0 * (0.82 + envelopeRatio * 0.55) * climate * orientPenalty - (state.greenRoof ? 4 : 0);
   const occupants = Math.round(st.gfa / t.occ);
 
   // LEED v4 BD+C estimate (documented proxy)
@@ -67,6 +87,7 @@ export function compute(customText = '') {
   return {
     stats: st, type: t,
     heightFt, far, carbon, cost, util, daylight, eui, occupants,
+    orientPenalty, elongation,
     leed, tier, leedParts: { base: leedBase, energy: leedEnergy, daylight: leedDaylight, heat: leedHeat, mr: leedMR },
     energySave,
   };

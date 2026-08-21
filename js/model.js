@@ -2485,6 +2485,8 @@ function rebuildSolid() {
 
   if (state.masses?.length) {
     buildMasses();
+    // the whole composition turns together; the site, sun and city do not
+    towerGroup.rotation.y = THREE.MathUtils.degToRad(state.orientation || 0);
     scene.add(towerGroup);
     applyExplode();
     const st = towerStats();

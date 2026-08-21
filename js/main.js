@@ -15,7 +15,7 @@ import { initSplitters } from './splitters.js';
 import { interpretCommand, hasAI } from './chat.js';
 import { gptBuildMasses, hasGPT } from './openai.js';
 import { buildWithProtocol, fastBuild, quickCorrect } from './builder.js';
-import { hasClaude } from './claudecore.js';
+import { hasClaude, claudeConfig } from './claudecore.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
 
@@ -365,7 +365,8 @@ async function buildPasses() {
 
     // Sixty seconds is the longest a person waits in front of this screen, so
     // fast is the default and the survey-and-audit protocol is a mode.
-    const deepMode = (localStorage.getItem('napkin_build_mode') || 'fast') === 'deep';
+    const buildMode = localStorage.getItem('napkin_build_mode') || 'accurate';
+    const deepMode = buildMode === 'deep';
 
     // The concept pass paints in parallel — it is display (and the deep
     // mode's reading aid), never something the fast lane waits behind.
@@ -395,8 +396,11 @@ async function buildPasses() {
 
     const busy = ui.addChatMsg('ai', deepMode
       ? 'Deep protocol — surveying, building level by level, auditing until convergence…'
-      : 'Reading the drawing and building…', 'busy');
-    ui.veil(true, deepMode ? 'deep protocol — survey, build, audit…' : 'reading & building…');
+      : buildMode === 'accurate'
+        ? 'Pass 1 of 3 — reading the drawing into volumes…'
+        : 'Reading the drawing and building…', 'busy');
+    ui.veil(true, deepMode ? 'deep protocol — survey, build, audit…'
+      : buildMode === 'accurate' ? 'pass 1 of 3 — reading the drawing…' : 'reading & building…');
     let agentRan = false;
     try {
       // The builder loop drives the live scene the way an agent drives a CAD
@@ -432,7 +436,15 @@ async function buildPasses() {
             v = await buildWithProtocol(lastSketchShot, io); engineUsed = 'the Claude protocol';
           } else {
             v = await fastBuild(lastSketchShot, io); engineUsed = 'the fast lane';
-            if (v) scheduleSelfCheck(v.targetURL || lastSketchShot);
+            if (v && buildMode === 'accurate') {
+              // The single biggest lever on likeness is looking at your own
+              // render and correcting — the thing a one-shot never does. Two
+              // passes in the foreground, on the reading model, ~2 minutes.
+              v = await correctionPasses(v, io, busy) || v;
+              engineUsed = 'read, look, correct';
+            } else if (v) {
+              scheduleSelfCheck(v.targetURL || lastSketchShot);
+            }
           }
           agentRan = !!v;
         } catch (agentErr) { console.warn('Claude build failed', agentErr); }
@@ -500,6 +512,41 @@ let lastCamera = null;
 let lastSketchShot = null;
 let lastReferenceShot = null;
 let conceptURL = null;
+
+// ---------------- looking at your own work ----------------
+// Two deliberate passes, in front of the user, on the reading model: render
+// the scene from its declared camera, put it beside the drawing, hand over the
+// measured audit, take back a complete corrected scene. This is what a
+// one-shot reading cannot do for itself, and it is most of the likeness.
+async function correctionPasses(v, io, busy) {
+  const target = v.targetURL || lastSketchShot;
+  let masses = v.masses, camera = v.camera;
+  for (let pass = 1; pass <= 2; pass++) {
+    const label = `Pass ${pass + 1} of 3 \u2014 looking at the model beside your sketch\u2026`;
+    ui.veil(true, label);
+    if (busy) busy.textContent = label;
+    try {
+      await io.apply(masses, camera);
+      const findings = runAudit({
+        masses, metrics: compute(customTypeText), site: siteData.currentRealSite(),
+      }).findings;
+      const r = await quickCorrect(target, masses, camera, {
+        snapshot: io.snapshot,
+        tiles: io.tiles,
+        auditFindings: findings,
+        model: claudeConfig().model,      // the reading model, not the quick one
+      });
+      if (!r) break;                       // it says the panes already agree
+      masses = r.masses;
+      if (r.camera) camera = r.camera;
+    } catch (e) {
+      console.warn('correction pass ' + pass + ' failed', e);
+      break;
+    }
+  }
+  await io.apply(masses, camera);
+  return { ...v, masses, camera };
+}
 
 // ---------------- the background self-check ----------------
 // Fires after the fast lane has already put a model on screen. If the user

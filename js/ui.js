@@ -4,6 +4,14 @@ import { STYLES } from './render.js';
 import { SPONSORS, sponsorStatus, stream } from './versions.js';
 
 const $ = id => document.getElementById(id);
+// The front facade points +z, which is south with the building unturned; the
+// slider walks it clockwise, so 90 puts the front to the west.
+const COMPASS = ['S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE'];
+export function compassOf(deg) {
+  const d = ((+deg % 360) + 360) % 360;
+  return COMPASS[Math.round(d / 22.5) % 16];
+}
+
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // ---------- metric rail ----------
@@ -202,6 +210,7 @@ export function renderParams(state, hooks) {
     // Size before parts. A drawing carries proportion far better than scale,
     // so the first thing to reach for is the size of the whole thing.
     const sc = state.massScale || 1;
+    const orient = ((state.orientation || 0) % 360 + 360) % 360;
     const tall = Math.max(...state.masses.map(m => m.y + m.h));
     const head =
       '<div class="pgroup pgroup-scale">' +
@@ -211,6 +220,17 @@ export function renderParams(state, hooks) {
           '<input type="range" min="0.3" max="3" step="0.01" value="' + sc + '" id="mass-scale" />' +
           '<span class="pval" id="pv-scale">' + (Math.round(sc * 100) / 100) + '×</span></div>' +
         '<div class="pnote" id="scale-note">' + Math.round(tall) + ' m to the top</div>' +
+        // Turning the building turns its facades into or away from the sun,
+        // so this slider moves the energy line, not just the picture.
+        '<div class="prow"><label title="Rotate the whole building — the front facade’s compass bearing">turn</label>' +
+          '<input type="range" min="0" max="359" step="1" value="' + Math.round(orient) + '" id="mass-orient" />' +
+          '<span class="pval" id="pv-orient">' + compassOf(orient) + '</span></div>' +
+        '<div class="compass-rail" aria-hidden="true">' +
+          ['S', 'W', 'N', 'E', 'S'].map(function (c, i) {
+            return '<span style="left:' + (i * 25) + '%">' + c + '</span>';
+          }).join('') +
+        '</div>' +
+        '<div class="pnote" id="orient-note">front faces ' + compassOf(orient) + ' · ' + Math.round(orient) + '°</div>' +
       '</div>';
     p.innerHTML = head + state.masses.map((m, i) =>
       '<div class="pgroup" data-mi="' + i + '">' +
@@ -224,6 +244,17 @@ export function renderParams(state, hooks) {
           '<span class="pval" id="pv-' + i + '-' + k + '">' + (Math.round(m[k] * 10) / 10) + '</span></div>').join('') +
       '</div>').join('') +
       '<button class="add-mass" id="add-mass">\uff0b add a volume</button>';
+
+    const orEl = p.querySelector('#mass-orient');
+    if (orEl) {
+      const showOrient = (v, commit) => {
+        $('pv-orient').textContent = compassOf(v);
+        $('orient-note').textContent = 'front faces ' + compassOf(v) + ' · ' + Math.round(v) + '°';
+        hooks.onGlobalEdit('orientation', +v, commit);
+      };
+      orEl.addEventListener('input', () => showOrient(+orEl.value, false));
+      orEl.addEventListener('change', () => showOrient(+orEl.value, true));
+    }
 
     const scEl = p.querySelector('#mass-scale');
     if (scEl) {
@@ -315,8 +346,9 @@ export function settingsModal(onSave) {
       <input id="set-claude" type="password" placeholder="sk-ant-…" value="${esc(g('napkin_claude_key') || (window.NAPKIN_CONFIG?.anthropicKey ?? ''))}" /></div>
     <div class="settings-row"><label>Build mode</label>
       <select id="set-build-mode">
-        <option value="fast" ${g('napkin_build_mode') !== 'deep' ? 'selected' : ''}>Fast — one pass, under a minute, self-check in the background</option>
-        <option value="deep" ${g('napkin_build_mode') === 'deep' ? 'selected' : ''}>Deep protocol — survey, layered build, dual audits (minutes)</option>
+        <option value="accurate" ${(g('napkin_build_mode') || 'accurate') === 'accurate' ? 'selected' : ''}>Accurate — read, then look and correct twice (~2 min, default)</option>
+        <option value="fast" ${g('napkin_build_mode') === 'fast' ? 'selected' : ''}>Fast — one pass under a minute, self-check in the background</option>
+        <option value="deep" ${g('napkin_build_mode') === 'deep' ? 'selected' : ''}>Deep protocol — survey, layered build, dual audits (several minutes)</option>
       </select></div>
     <div class="settings-row"><label>Claude model</label>
       <input id="set-claude-model" placeholder="claude-opus-5" value="${esc(g('napkin_claude_model'))}" /></div>

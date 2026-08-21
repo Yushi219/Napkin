@@ -1632,3 +1632,11 @@ body.reviewing #audit-panel { width: auto; }
   body.reviewing.pane-model #review-table { display: none; }
   .rt-face { width: 32px; height: 32px; }
 }
+
+/* the compass rail under the turn slider: where the front is pointing */
+.compass-rail {
+  position: relative; height: 12px; margin: -2px 0 2px 46px;
+  font-family: var(--font-mono); font-size: 8.5px; color: var(--faint);
+}
+.compass-rail span { position: absolute; transform: translateX(-50%); }
+#pv-orient { font-family: var(--font-mono); font-size: 10.5px; color: var(--accent); }
