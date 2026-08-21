@@ -143,6 +143,9 @@ function openProject(item, isUser) {
   clearSelection();
   // a reopened project keeps its identity, so further work updates it in place
   currentProjectId = isUser ? item.id : null;
+  projectName = isUser ? (item.name || '') : '';
+  if ($('project-name')) $('project-name').value = projectName;
+  localStorage.setItem('napkin_project_name', projectName);
   // the sketch is regenerated from the massing so napkin and model always agree
   sketch.restoreStrokes({ front: item.strokes || strokesFor(item.masses), side: [], plan: [] });
   sketch.restorePhoto(item.photo || null);
@@ -166,7 +169,6 @@ function openProject(item, isUser) {
   model.applyPatch(patch);
   if (item.type) {
     $('type-select').value = item.type;
-    $('kind-select').value = item.type;
   }
   enterWorkspace();
   refresh();
@@ -190,6 +192,7 @@ function openProject(item, isUser) {
 // the concept pass, the last render, the words. Reopening it must feel like
 // nothing was ever put away.
 let currentProjectId = null;
+let projectName = '';
 
 // localStorage holds ~5 MB for the whole app, so every picture is shrunk
 // before it is stored — a gallery record is a keepsake, not an archive.
@@ -214,8 +217,9 @@ function shrinkDataURL(url, maxEdge = 640, q = 0.72) {
 
 async function saveToGallery() {
   if (!model.state.masses?.length) return;
-  const name = (model.state.reading || 'Untitled')
-    .split(/[,—.]/)[0].trim().replace(/^a /i, '').slice(0, 26) || 'Untitled';
+  const name = projectName
+    || (model.state.reading || 'Untitled').split(/[,—.]/)[0].trim().replace(/^a /i, '').slice(0, 26)
+    || 'Untitled';
   currentProjectId = currentProjectId || 'u' + Date.now();
   const [photo, concept, render] = await Promise.all([
     shrinkDataURL(sketch.photoDataURL(900)),
@@ -1038,6 +1042,65 @@ function loadLeaflet() {
   return leafletReady;
 }
 
+// ---- recent sites ----
+// A short chip per place worked on before. It carries only what re-opening
+// the map needs — never the fetched neighbourhood, which would fill
+// localStorage in a handful of projects.
+const RECENT_KEY = 'napkin_site_recent';
+const escSite = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const shortName = site => (site.region?.city || site.region?.label || site.label || 'site').split(',')[0].trim().slice(0, 22);
+
+function recentSites() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
+}
+function rememberSite(site) {
+  const entry = {
+    label: site.label, short: shortName(site), lat: site.lat, lon: site.lon,
+    radius: site.radius, address: site.address || {},
+    parcel: site.parcel || null, at: Date.now(),
+  };
+  const key = e => e.lat.toFixed(4) + ',' + e.lon.toFixed(4);
+  const list = [entry, ...recentSites().filter(e => key(e) !== key(entry))].slice(0, 6);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* quota */ }
+}
+// The header's site chip: where this project is, and the way back to the map.
+function renderDashSite() {
+  const btn = $('dash-site');
+  if (!btn) return;
+  const live = siteData.currentRealSite();
+  const recent = recentSites();
+  if (live) {
+    btn.textContent = '\u{1F4CD} ' + shortName(live);
+    btn.title = live.label + ' \u00b7 ' + live.buildings.length + ' buildings \u00b7 '
+      + (live.roads?.length || 0) + ' streets \u00b7 r' + live.radius + ' m'
+      + (live.weather ? ' \u00b7 ' + Math.round(live.weather.tempC) + '\u00b0C' : '')
+      + ' \u2014 click to change the site';
+    btn.classList.add('pinned');
+  } else {
+    btn.textContent = recent.length ? '\u{1F4CD} Set site' : '\u{1F4CD} No site';
+    btn.title = 'Pick the project site \u2014 search an address, draw the parcel';
+    btn.classList.remove('pinned');
+  }
+}
+
+function renderRecentSites() {
+  const row = $('site-recent');
+  if (!row) return;
+  const list = recentSites();
+  if (!list.length) { row.classList.add('hidden'); row.innerHTML = ''; return; }
+  const live = siteData.currentRealSite();
+  row.classList.remove('hidden');
+  row.innerHTML = list.map((e, i) => {
+    const on = live && Math.abs(live.lat - e.lat) < 1e-4 && Math.abs(live.lon - e.lon) < 1e-4;
+    return '<button class="site-recent-btn' + (on ? ' on' : '') + '" data-i="' + i + '" title="' + escSite(e.label) + '">📍 ' + escSite(e.short) + '</button>';
+  }).join('');
+  row.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', () => {
+    const e = list[+b.dataset.i];
+    // straight back to the map, parcel and radius as they were, to re-confirm
+    openSitePicker({ label: e.label, lat: e.lat, lon: e.lon, address: e.address }, e);
+  }));
+}
+
 function applyPinnedSite(site) {
   model.setRealSiteData(site);
   setCustomSite(site.lat, site.lon, site.region.label || site.label, site.weather?.utcOffsetHours);
@@ -1046,10 +1109,10 @@ function applyPinnedSite(site) {
     $('btn-weather').textContent = model.getWeather().label;
   }
   $('btn-landscape').textContent = '📍 ' + (site.region.city || site.region.label || 'site');
-  const chip = $('site-chip');
-  chip.textContent = `📍 ${site.region.label || site.label} · ${site.buildings.length} buildings · ${site.roads?.length || 0} streets · r${site.radius}m` + (site.weather ? ` · ${Math.round(site.weather.tempC)}°C` : '');
-  chip.classList.remove('hidden');
   localStorage.setItem('napkin_real_site', JSON.stringify(site));
+  rememberSite(site);
+  renderRecentSites();
+  renderDashSite();
   refresh();
   syncSunControls();
   const nCtx = site.buildings.length + (site.roads?.length || 0);
@@ -1062,17 +1125,17 @@ function applyPinnedSite(site) {
   }
 }
 
-async function openSitePicker(hit) {
+async function openSitePicker(hit, preset = null) {
   try { await loadLeaflet(); } catch (e) { ui.toast('Map library unreachable.'); return; }
   const L = window.L;
-  let radius = 220;
+  let radius = preset?.radius || 220;
   ui.openModal(`
     <div class="modal-kicker">Project site</div>
     <div class="modal-title" style="font-size:18px">${hit.label.split(',').slice(0, 3).join(',')}</div>
     <div id="site-map"></div>
     <div class="site-modal-row"><span>Context radius</span>
-      <input id="site-radius" type="range" min="120" max="400" step="20" value="220" />
-      <span id="site-radius-val" class="mono">220 m</span></div>
+      <input id="site-radius" type="range" min="120" max="400" step="20" value="${radius}" />
+      <span id="site-radius-val" class="mono">${radius} m</span></div>
     <div class="site-modal-row" id="site-instruction" style="color:var(--faint)">Draw the parcel: click its corners, then click the first corner again to close. Drag any corner to adjust. Double-click or right-click the map to start over.</div>
     <button class="build-btn" id="site-pin" style="width:100%;margin-top:12px" disabled>Draw the parcel first</button>`);
 
@@ -1113,6 +1176,16 @@ async function openSitePicker(hit) {
     $('site-instruction').textContent = 'Draw the parcel: click its corners, then click the first corner again to close. Drag any corner to adjust. Double-click or right-click the map to start over.';
   };
 
+  // a remembered parcel comes back closed, ready to confirm or adjust
+  if (preset?.parcel?.length >= 3) {
+    pts = preset.parcel.map(([la, lo]) => L.latLng(la, lo));
+    pts.forEach(addMarker);
+    closed = true;
+    map.fitBounds(L.latLngBounds(pts).pad(1.4));
+    redraw();
+    $('site-instruction').textContent = 'This is the parcel you drew before. Adjust a corner, change the radius, or pin it again as it is.';
+  }
+
   map.on('click', e => {
     if (closed) return;
     // clicking the first corner again closes the loop
@@ -1146,11 +1219,12 @@ async function openSitePicker(hit) {
     btn.textContent = 'Reading the site…';
     const c = centroid();
     try {
+      const parcel = pts.map(p => [p.lat, p.lng]);
       const site = await siteData.assembleSite({
         lat: c.lat, lon: c.lng, radius,
-        label: hit.label, address: hit.address,
-        parcel: pts.map(p => [p.lat, p.lng]),
+        label: hit.label, address: hit.address, parcel,
       }, step => { btn.textContent = step; });
+      site.parcel = parcel;
       ui.closeModal();
       applyPinnedSite(site);
     } catch (e) {
@@ -1190,6 +1264,8 @@ function wireSiteSearch() {
   try {
     const saved = JSON.parse(localStorage.getItem('napkin_real_site') || 'null');
     if (saved?.lat) { siteData.setActiveSite(saved); applyPinnedSite(saved); }
+    renderRecentSites();
+    renderDashSite();
   } catch { /* ignore */ }
 }
 
@@ -1269,7 +1345,6 @@ function wire() {
 
   $('type-select').addEventListener('change', e => {
     const v = e.target.value;
-    if ($('kind-select').value !== v) $('kind-select').value = v;
     $('type-custom').classList.toggle('hidden', v !== 'custom');
     if (v !== 'custom') {
       customTypeText = '';
@@ -1580,11 +1655,6 @@ function wire() {
   initGalleryScroll($('gallery'));
 
   // project archetype picker sits next to Build and mirrors the dashboard
-  $('kind-select').addEventListener('change', e => {
-    const v = e.target.value;
-    $('type-select').value = v;
-    $('type-select').dispatchEvent(new Event('change'));
-  });
 
   // hand control — camera preview appears where the line study used to live
   $('btn-hand').addEventListener('click', async () => {
@@ -1770,6 +1840,34 @@ function wire() {
   }
   onDeviceChange(k => { if (k !== 'phone') document.body.classList.remove('pane-sketch', 'pane-model'); });
 
+  // ---- the header trio: name, program, site ----
+  const nameInput = $('project-name');
+  nameInput.value = localStorage.getItem('napkin_project_name') || '';
+  const saveName = () => {
+    projectName = nameInput.value.trim();
+    localStorage.setItem('napkin_project_name', projectName);
+    document.title = projectName ? projectName + ' \u2014 NAPKIN' : 'NAPKIN';
+  };
+  nameInput.addEventListener('input', saveName);
+  nameInput.addEventListener('change', () => { saveName(); if (built) saveToGallery(); });
+  saveName();
+
+  // the site chip reopens the same map the landing page uses
+  $('dash-site').addEventListener('click', async () => {
+    const live = siteData.currentRealSite();
+    const recent = recentSites();
+    const from = live || recent[0];
+    if (from) {
+      openSitePicker(
+        { label: from.label, lat: from.lat, lon: from.lon, address: from.address || {} },
+        { radius: from.radius, parcel: from.parcel || null });
+    } else {
+      ui.toast('Search an address on the home screen first \u2014 then draw the parcel.', 4200);
+      $('btn-home').click();
+      setTimeout(() => $('site-search')?.focus(), 700);
+    }
+  });
+
   // ---- site / time / detail bar (ported from CONCORD) ----
   wireSiteSearch();
   $('site-select').innerHTML = Object.entries(SITES)
@@ -1788,7 +1886,8 @@ function wire() {
     if (model.hasRealSite()) {
       model.clearRealSiteData(); clearCustomSite(); siteData.clearRealSite();
       localStorage.removeItem('napkin_real_site');
-      $('site-chip')?.classList.add('hidden');
+      renderRecentSites();
+      renderDashSite();
       $('btn-landscape').textContent = model.getLandscape().label;
       ui.toast('Back to preset sites — the pinned project site is released.');
     }
