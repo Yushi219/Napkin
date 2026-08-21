@@ -7,7 +7,7 @@ import { renderImage, hasGemini, conceptModelImage, writeRenderPrompt } from './
 import * as hands from './hands.js';
 import { SITES, getSite, seasonDate, daylightWindow, setCustomSite, clearCustomSite } from './solar.js';
 import * as siteData from './site.js';
-import { runAudit, AUDIT_COLORS } from './auditor.js';
+import { runAudit, AUDIT_COLORS, FACES } from './auditor.js';
 import { initDevice, deviceKind, isTouch, showPane, onDeviceChange } from './device.js';
 import { EXAMPLES, strokesFor } from './examples.js';
 import { renderGallery, initGalleryScroll, saveProject, deleteProject } from './gallery.js';
@@ -1011,41 +1011,79 @@ function runAuditView() {
   model.showAuditShells(report.worstByElement, AUDIT_COLORS);
   model.showAuditMarkers(report.worstByElement, AUDIT_COLORS);
   lastAudit = report;
-  const head = $('audit-head'), list = $('audit-list');
+  const head = $('audit-head');
   head.innerHTML = `
     <span class="ac" title="Blockers — the scheme has a problem to resolve before it goes further: no load path, nothing meeting the ground, a support that does not exist."><span class="dot" style="background:#d4453a"></span>${report.counts.blocker}</span>
     <span class="ac" title="Warnings — clearly visible deviations that change the design: deep cantilevers, thin bearing, plan depths past daylight and egress, carbon or energy over benchmark."><span class="dot" style="background:#d9b545"></span>${report.counts.major}</span>
-    <span class="ac" title="Notes — worth knowing, not blocking: mild overlaps, heights worth checking against the district plan, numbers a little over target."><span class="dot" style="background:#4a9d5b"></span>${report.counts.minor}</span>
-    <span style="margin-left:auto;color:var(--muted);font-weight:400">${siteData.currentRealSite() ? '📍 ' + (siteData.currentRealSite().region.label || 'site') : 'no site pinned'}</span>`;
-  if (!report.findings.length) {
-    list.innerHTML = '<div class="audit-clean">Nothing flagged. Structure stands, plans daylight, carbon inside the benchmark.</div>';
-    return;
-  }
-  list.innerHTML = report.findings.map((x, i) => `
-    <div class="audit-item sev-${x.severity}" data-where="${x.where}" data-i="${i}">
-      <div class="bar"></div>
-      <div>
-        <div class="ai-where">${x.domain} · ${x.where}</div>
-        <div class="ai-issue">${x.issue}</div>
-        ${x.fix ? `<div class="ai-fix">→ ${x.fix}</div>` : ''}
-        ${x.why ? `<div class="ai-more">click for the reasoning</div><div class="ai-why">${x.why}</div>` : ''}
+    <span class="ac" title="Notes — worth knowing, not blocking: mild overlaps, heights worth checking against the district plan, numbers a little over target."><span class="dot" style="background:#4a9d5b"></span>${report.counts.minor}</span>`;
+
+  renderReviewTable(report);
+}
+
+// ---------------- the review table ----------------
+// Three disciplines, seated, each with what they are responsible for. A
+// finding is something a person said, and saying it points at the model.
+const SEV_COL = { blocker: '#d4453a', major: '#d9b545', minor: '#4a9d5b' };
+
+function renderReviewTable(report) {
+  const site = siteData.currentRealSite();
+  $('rt-site').textContent = site ? '📍 ' + (site.region.label || site.label).split(',')[0] : 'no site pinned';
+
+  $('rt-seats').innerHTML = report.table.map(r => {
+    const tally = ['blocker', 'major', 'minor']
+      .map(sev => ({ sev, n: r.findings.filter(f => f.severity === sev).length }))
+      .filter(t => t.n);
+    return `<div class="rt-seat">
+      <div class="rt-person">
+        <span class="rt-face" style="color:${r.accent}">${FACES[r.id]}</span>
+        <span class="rt-who">
+          <span class="rt-name">${r.name}</span>
+          <span class="rt-role">${r.role}</span>
+        </span>
+        <span class="rt-tally">${tally.map(t =>
+          `<span class="rt-pip" style="background:${SEV_COL[t.sev]}" title="${t.n} ${t.sev}">${t.n}</span>`).join('')}</span>
       </div>
-    </div>`).join('');
-  list.querySelectorAll('.audit-item').forEach(el => el.addEventListener('click', () => {
-    // open the evidence, and make the model point back at itself
-    list.querySelectorAll('.audit-item.open').forEach(o => { if (o !== el) o.classList.remove('open'); });
+      ${r.findings.length
+        ? `<div class="rt-says">${r.findings.map(x => `
+            <div class="rt-item sev-${x.severity}" data-where="${x.where}">
+              <div class="rt-where">${x.where}</div>
+              <div class="rt-issue">${x.issue}</div>
+              ${x.fix ? `<div class="rt-fix">→ ${x.fix}</div>` : ''}
+              ${x.why ? `<div class="rt-more">click for the reasoning</div><div class="rt-why">${x.why}</div>` : ''}
+            </div>`).join('')}</div>`
+        : `<div class="rt-quiet">“${r.quiet}”</div>`}
+    </div>`;
+  }).join('');
+
+  $('rt-seats').querySelectorAll('.rt-item').forEach(el => el.addEventListener('click', () => {
+    $('rt-seats').querySelectorAll('.rt-item.open').forEach(o => { if (o !== el) o.classList.remove('open'); });
     el.classList.toggle('open');
-    const more = el.querySelector('.ai-more');
+    const more = el.querySelector('.rt-more');
     if (more) more.textContent = el.classList.contains('open') ? 'click to close' : 'click for the reasoning';
     const idx = model.state.masses?.findIndex(m => m.id === el.dataset.where);
-    if (idx >= 0) model.setSelection([idx]);
+    // route through the app's own selection so the chip bar names it too
+    if (idx >= 0) { clearSelection(); onPickMass(idx); }
     model.flashAudit(el.dataset.where);
+  }));
+
+  const adv = $('rt-advice');
+  adv.innerHTML = '<div class="rt-advice-head">What the table recommends</div>'
+    + (report.advice.length
+      ? report.advice.map((a, i) => `<div class="rt-advice-item" data-target="${a.target}"><span class="rt-advice-n">${i + 1}</span><span>${a.text}</span></div>`).join('')
+      : '<div class="rt-advice-empty">Nothing to change — the scheme reads as buildable, permittable and inside the benchmarks.</div>');
+  adv.querySelectorAll('.rt-advice-item').forEach(el => el.addEventListener('click', () => {
+    const idx = model.state.masses?.findIndex(m => m.id === el.dataset.target);
+    if (idx >= 0) { model.setSelection([idx]); model.flashAudit(el.dataset.target); }
+    if (!$('params-panel').classList.contains('hidden')) syncParams();
   }));
 }
 
 function setAuditMode(on) {
   auditOn = on;
   $('audit-panel').classList.toggle('hidden', !on);
+  // Audit hands the left column to the review table — the napkin steps aside
+  document.body.classList.toggle('reviewing', on);
+  $('review-table').classList.toggle('hidden', !on);
   if (on) runAuditView();
   else { model.clearAuditShells(); model.clearAuditMarkers(); }
 }
@@ -1054,9 +1092,9 @@ function setAuditMode(on) {
 function auditMarkerClick(nx, ny) {
   const id = model.markerAt(nx, ny);
   if (!id) return false;
-  const el = $('audit-list').querySelector(`.audit-item[data-where="${CSS.escape(id)}"]`);
+  const el = $('rt-seats').querySelector(`.rt-item[data-where="${CSS.escape(id)}"]`);
   if (el) {
-    $('audit-list').querySelectorAll('.audit-item.open').forEach(o => o.classList.remove('open'));
+    $('rt-seats').querySelectorAll('.rt-item.open').forEach(o => o.classList.remove('open'));
     el.classList.add('open');
     el.classList.remove('flash');
     void el.offsetWidth;

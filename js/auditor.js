@@ -113,6 +113,99 @@ function climateChecks(metrics) {
   return F;
 }
 
+
+// ---------------- the review table ----------------
+// The same findings, seated. Each discipline reviews what it is responsible
+// for and speaks in its own voice, so a scheme is not judged by one anonymous
+// list but by the people who would actually be in the room.
+
+export const REVIEWERS = [
+  { id: 'structure', name: 'Priya', role: 'Structural engineer',
+    domains: ['structure'], accent: '#c1553f',
+    quiet: 'It stands up. Nothing here needs a transfer or a truss.' },
+  { id: 'planner', name: 'Marcus', role: 'Planning officer',
+    domains: ['code'], accent: '#4a6fa5',
+    quiet: 'Nothing that would stop a planning submission on massing grounds.' },
+  { id: 'sustainability', name: 'Lena', role: 'Sustainability lead',
+    domains: ['climate'], accent: '#4a9d5b',
+    quiet: 'Carbon and energy both sit inside the benchmarks for this type.' },
+];
+
+// Portraits, drawn rather than fetched: flat, quiet, one silhouette each, told
+// apart by hard hat, collar and headscarf rather than by caricature.
+export const FACES = {
+  structure: `<svg viewBox="0 0 48 48" aria-hidden="true">
+    <circle cx="24" cy="24" r="23" class="rt-bg"/>
+    <path d="M12 40v-3c0-5 5.4-8 12-8s12 3 12 8v3z" class="rt-body"/>
+    <circle cx="24" cy="19" r="8" class="rt-skin"/>
+    <path d="M10.5 15.5h27a13.5 13.5 0 0 0-27 0z" class="rt-hat"/>
+    <path d="M8 15.5h32" class="rt-line"/>
+    <path d="M24 2.5v5" class="rt-line"/></svg>`,
+  planner: `<svg viewBox="0 0 48 48" aria-hidden="true">
+    <circle cx="24" cy="24" r="23" class="rt-bg"/>
+    <path d="M12 40v-3c0-5 5.4-8 12-8s12 3 12 8v3z" class="rt-body"/>
+    <path d="M19 29.5 24 36l5-6.5" class="rt-collar"/>
+    <circle cx="24" cy="18" r="8" class="rt-skin"/>
+    <path d="M15.5 16c1-6 6-8.5 8.5-8.5S32 10 32.5 16c-2.5-1.5-4-4-4-4s-4 3.5-13 4z" class="rt-hair"/></svg>`,
+  sustainability: `<svg viewBox="0 0 48 48" aria-hidden="true">
+    <circle cx="24" cy="24" r="23" class="rt-bg"/>
+    <path d="M12 40v-3c0-5 5.4-8 12-8s12 3 12 8v3z" class="rt-body"/>
+    <circle cx="24" cy="19" r="7.5" class="rt-skin"/>
+    <path d="M24 8.5c6 0 9.5 4.4 9.5 10 0 3-1 5-1 5l-2-6.5s-4 2-8.5 2-6.5-1.5-6.5-1.5l-1 6s-1-2.4-1-5c0-5.6 4.5-10 10.5-10z" class="rt-scarf"/>
+    <path d="M34 15c2.5 2 3.5 5.5 2.5 8.5" class="rt-leaf"/></svg>`,
+};
+
+// What to actually change, in the language of the sliders on screen. Only
+// advice that names a parameter and a direction earns a place — "improve
+// daylight" helps nobody.
+export function optimisationAdvice(findings, masses, metrics) {
+  if (!masses?.length) return [];
+  const out = [];
+  const seen = new Set();
+  const add = (a) => { const k = a.what + a.target; if (!seen.has(k)) { seen.add(k); out.push(a); } };
+  const byId = new Map(masses.map(m => [m.id, m]));
+
+  for (const x of findings) {
+    const m = byId.get(x.where);
+    if (/slenderness/.test(x.issue) && m) {
+      const need = +(m.h / 9).toFixed(1);
+      const grow = +(need - Math.min(m.w, m.d)).toFixed(1);
+      if (grow > 0.1) add({ target: x.where, what: (m.w <= m.d ? 'w' : 'd'),
+        text: `Widen ${x.where}'s ${m.w <= m.d ? 'width' : 'depth'} by ${grow} m (to ${need} m) — that brings slenderness to 9:1, the point where a plain frame stops needing a core.`,
+        severity: x.severity });
+    }
+    if (/bears on|cantilevers/.test(x.issue) && m) {
+      const sup = byId.get(m.on);
+      if (sup) {
+        const toward = +( (sup.x - m.x) ).toFixed(1);
+        if (Math.abs(toward) > 0.3) add({ target: x.where, what: 'x',
+          text: `Slide ${x.where} ${Math.abs(toward) > 0 ? (toward > 0 ? 'right' : 'left') : ''} by ${Math.abs(toward).toFixed(1)} m to sit over ${sup.id} — or declare the cantilever and carry a storey-deep beam.`,
+          severity: x.severity });
+      }
+    }
+    if (/plan depth|deep plan/.test(x.issue) && m) {
+      const cut = +(Math.min(m.w, m.d) - 24).toFixed(1);
+      if (cut > 0.5) add({ target: x.where, what: (m.w <= m.d ? 'w' : 'd'),
+        text: `Take ${cut} m off ${x.where}'s ${m.w <= m.d ? 'width' : 'depth'}, or cut a court through it — the middle is past useful daylight.`,
+        severity: x.severity });
+    }
+    if (/kgCO/.test(x.issue)) add({ target: 'building', what: 'structure',
+      text: `Switch the structure to timber-hybrid in Params — typically 25-40% off upfront carbon before any geometry changes.`,
+      severity: x.severity });
+    if (/kWh/.test(x.issue)) {
+      const glassy = masses.filter(v => v.facade === 'glass').length;
+      add({ target: 'building', what: 'facade',
+        text: glassy
+          ? `${glassy} volume${glassy > 1 ? 's are' : ' is'} fully glazed — moving one or two to slats-v or solid is the cheapest move on the energy line.`
+          : `Compactness governs here: fewer, deeper volumes lower the surface-to-volume ratio more than any envelope spec.`,
+        severity: x.severity });
+    }
+  }
+  const rank = { blocker: 0, major: 1, minor: 2 };
+  out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+  return out.slice(0, 6);
+}
+
 // ---------------- the audit ----------------
 
 export function runAudit({ masses, metrics, site }) {
@@ -131,5 +224,12 @@ export function runAudit({ masses, metrics, site }) {
     if (x.where === 'building') continue;
     if (!(x.where in worstByElement) || rank[x.severity] < rank[worstByElement[x.where]]) worstByElement[x.where] = x.severity;
   }
-  return { findings, counts, worstByElement, clean: findings.length === 0 };
+  // seat the findings at the table
+  const table = REVIEWERS.map(r => ({
+    ...r,
+    findings: findings.filter(x => r.domains.includes(x.domain)),
+  }));
+  return { findings, counts, worstByElement, table,
+    advice: optimisationAdvice(findings, masses, metrics),
+    clean: findings.length === 0 };
 }
