@@ -925,13 +925,18 @@ async function doRender(userLine = '') {
     let framed = false;
     if (framing.visible < 0.85) { framed = model.frameBuilding(); }
     const snapshot = model.modelSnapshot();
+    // The shaded view says roughly where the building is. The line drawing says
+    // exactly where its edges are, and that is what an image model drifts off.
+    // Both go to the renderer, in register, from the same camera.
+    const linesURL = model.structureSnapshot();
     renderCamera = model.getCameraPose();       // lock: the render belongs to this view
     const shotSize = await new Promise(res => { const i = new Image(); i.onload = () => res(`${i.width}\u00d7${i.height}`); i.src = snapshot; });
-    done(s1, `\u2460 Input image captured at ${shotSize} — this is the structure the render must follow.`);
+    done(s1, `\u2460 Input image captured at ${shotSize}${linesURL ? ', with its structure lines' : ''} — this is the structure the render must follow.`);
     if (framed) ui.addChatMsg('ai', 'The building was partly outside the frame, so I fitted the view before capturing — a render can only follow what the input image shows.');
-    ui.addChatImages(refDataURL
-      ? [{ url: snapshot, label: 'IMAGE 1 · your model (structure)' }, { url: refDataURL, label: 'IMAGE 2 · your reference (style only)' }]
-      : [{ url: snapshot, label: 'IMAGE 1 · your model (structure)' }]);
+    const shots = [{ url: snapshot, label: 'IMAGE 1 · your model (structure)' }];
+    if (linesURL) shots.push({ url: linesURL, label: 'IMAGE 2 · structure lines (every edge must land here)' });
+    if (refDataURL) shots.push({ url: refDataURL, label: `IMAGE ${shots.length + 1} · your reference (style only)` });
+    ui.addChatImages(shots);
 
     // ---- 2. one sentence becomes a full brief ----
     let brief = userLine;
@@ -971,6 +976,8 @@ async function doRender(userLine = '') {
 
     const { url, engine } = await renderImage({
       snapshot,
+      linesURL,
+      hasContext: model.hasRealSite(),
       styleId,
       userPrompt: brief,
       refDataURL,

@@ -132,27 +132,44 @@ Return ONLY the paragraph, no preamble, no quotes, no headings.`,
   return (written || '').trim();
 }
 
-export async function renderImage({ snapshot, styleId, userPrompt, refDataURL, typeLabel }) {
+export async function renderImage({ snapshot, linesURL, hasContext, styleId, userPrompt, refDataURL, typeLabel }) {
   const style = STYLES.find(s => s.id === styleId) || STYLES[0];
   // A fully-written brief (from writeRenderPrompt) replaces the canned style
   // line entirely — that is what stops the model from just echoing the input.
   const core = userPrompt && userPrompt.length > 140
     ? userPrompt
     : `Re-render the INPUT IMAGE as: ${style.prompt}. The building is a ${typeLabel.toLowerCase()}.${userPrompt ? ` Art direction: ${userPrompt}.` : ''}`;
+  // The images are numbered in the order they are attached, so the labels in
+  // the brief have to be built the same way — a rule that talks about "IMAGE 2"
+  // when image 2 is something else is worse than no rule at all.
+  const LINES = linesURL ? 'IMAGE 2' : null;
+  const REF = refDataURL ? (linesURL ? 'IMAGE 3' : 'IMAGE 2') : null;
+
   const brief = [
     'TASK: repaint IMAGE 1. This is an edit of that exact picture, not a new picture.',
     'Keep every edge where it is: same silhouette, same storey lines, same setbacks, same surrounding buildings, same horizon, same crop, same camera. If the building is cut off by the frame in IMAGE 1, it stays cut off in the same place.',
     'Change ONLY the surface treatment, materials, lighting, sky and small entourage. Adding, removing, re-centring, re-framing or re-proportioning anything is a failure.',
-    'If the text below and IMAGE 1 ever disagree about form, viewpoint or framing, IMAGE 1 wins.',
+    LINES
+      ? `If the text below and IMAGE 1 ever disagree about form, viewpoint or framing, IMAGE 1 wins. If IMAGE 1 and ${LINES} ever disagree about where an edge is, ${LINES} wins.`
+      : 'If the text below and IMAGE 1 ever disagree about form, viewpoint or framing, IMAGE 1 wins.',
     '',
     core,
     '',
     'Image role rules:',
     '- Image 1: INPUT IMAGE / STRUCTURE SOURCE. Preserve its geometry, camera view, massing, proportions and spatial organization exactly.',
+    // The control drawing is the whole point: a shaded study model says roughly
+    // where the building is; the line drawing says exactly where its edges are.
+    LINES ? `- ${LINES}: THE STRUCTURE LINES — a line drawing of the SAME view, registered pixel for pixel with IMAGE 1. Dark lines are the building; grey lines are its surroundings. Every one of them marks a real edge: a corner, a floor line, an opening, a setback, a parapet. In your output each of those edges must fall on its line. Do not straighten, round, merge, delete, add, shift or re-space any of them, and do not draw the lines themselves — they are a guide, not a graphic style.` : '',
+    LINES ? `- ${LINES} is NOT a building to render and NOT a style: it contributes no material, colour, light or content of its own.` : '',
     '- The input is an untextured grey/clay STUDY MODEL, not a finished building. Its flat placeholder surfaces MUST be replaced with real architectural materials, glazing with reflections, visible floor levels and mullions.',
-    '- The input has no context: ADD a believable site — ground plane, neighbouring buildings, sky, planting, and a few people for scale — unless the prompt says otherwise.',
+    // Telling the model to invent a site when the picture already contains a
+    // surveyed one is what makes it redraw the surroundings — and the building
+    // drifts along with them.
+    hasContext
+      ? '- The surroundings in IMAGE 1 are the REAL SITE, surveyed from map data: the neighbouring buildings, streets, water and planting are all where they actually are. Finish them as real buildings and real streets, but keep every one of them at its own position, footprint and height. Do not add buildings, do not remove them, do not move the shoreline or the road. You may add people and vehicles for scale.'
+      : '- The input has no context: ADD a believable site — ground plane, neighbouring buildings, sky, planting, and a few people for scale — unless the prompt says otherwise.',
     '- Do NOT return the input image unchanged, and do not return a grey clay model. The result must read as a finished architectural visualization.',
-    refDataURL ? '- Image 2: STYLE REFERENCE ONLY — it is NOT the building. Take only its palette, materials, light and photographic mood. Copying its shape, height, window grid, camera or composition is a failure.' : '',
+    REF ? `- ${REF}: STYLE REFERENCE ONLY — it is NOT the building. Take only its palette, materials, light and photographic mood. Copying its shape, height, window grid, camera or composition is a failure.` : '',
     '- Keep the final image the same aspect ratio as the INPUT IMAGE.',
   ].filter(Boolean).join('\n');
 
@@ -163,8 +180,12 @@ export async function renderImage({ snapshot, styleId, userPrompt, refDataURL, t
       { text: 'IMAGE 1 — THE BUILDING TO RENDER. Its geometry, storey count, proportions and camera are the ground truth and must be preserved exactly.' },
       { inline_data: { mime_type: 'image/png', data: strip64(snapshot) } },
     ];
+    if (linesURL) {
+      parts.push({ text: `${LINES} — THE STRUCTURE LINES of that same view, in register with IMAGE 1. Every edge you draw must land on one of these lines. Not a style, not a second building.` });
+      parts.push({ inline_data: { mime_type: 'image/png', data: strip64(linesURL) } });
+    }
     if (refDataURL) {
-      parts.push({ text: 'IMAGE 2 — STYLE REFERENCE ONLY. Not the building. Palette, materials, light and mood only; never its shape, height or camera.' });
+      parts.push({ text: `${REF} — STYLE REFERENCE ONLY. Not the building. Palette, materials, light and mood only; never its shape, height or camera.` });
       parts.push({ inline_data: { mime_type: mimeOf(refDataURL), data: strip64(refDataURL) } });
     }
     try {

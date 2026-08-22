@@ -2644,6 +2644,106 @@ export function modelSnapshot(longEdge = 1280, { isolate = false } = {}) {
   }
 }
 
+// ---- the structure lines: what the render is not allowed to move ----
+// A shaded grey study model tells an image model roughly where the building
+// is. It does not tell it where the EDGES are, and an image model asked to
+// "add materials" will happily slide a storey line or round off a corner.
+// This draws the same view as modelSnapshot() as black lines on white — every
+// silhouette, every floor line, every opening — and that drawing goes to the
+// renderer as the control image. Same camera, same aspect, same crop, so the
+// two pictures register pixel for pixel.
+export function structureSnapshot(longEdge = 1280, { withContext = true } = {}) {
+  if (!renderer || !camera) return null;
+  const group = importedGroup || towerGroup;
+  if (!group) return null;
+
+  const el = renderer.domElement;
+  const w0 = el.width, h0 = el.height, dpr0 = renderer.getPixelRatio();
+  let aspect = (el.clientWidth || 0) / (el.clientHeight || 1);
+  if (!Number.isFinite(aspect) || aspect < 0.45 || aspect > 3) aspect = 4 / 3;
+  const w = Math.round(aspect >= 1 ? longEdge : longEdge * aspect);
+  const h = Math.round(aspect >= 1 ? longEdge / aspect : longEdge);
+
+  const lineScene = new THREE.Scene();
+  lineScene.background = new THREE.Color(0xffffff);
+  const dispose = [];
+  // The building is drawn heavy, the surroundings light: the renderer must
+  // know which lines are the design and which are the street it stands in.
+  const building = new THREE.LineBasicMaterial({ color: 0x111111 });
+  const context = new THREE.LineBasicMaterial({ color: 0x9a948a });
+  dispose.push(building, context);
+
+  // Lines alone would render as an X-ray: every edge behind the building would
+  // show through, and the renderer would be told to put a corner where there is
+  // only a far wall. Each solid goes in as flat white with a polygon offset, so
+  // it hides what it should hide and still leaves the paper white.
+  const mask = new THREE.MeshBasicMaterial({
+    color: 0xffffff, polygonOffset: true, polygonOffsetFactor: 1.2, polygonOffsetUnits: 1.2,
+  });
+  dispose.push(mask);
+
+  const _m = new THREE.Matrix4();
+  const collect = (root, mat, angle) => {
+    if (!root) return;
+    root.updateMatrixWorld(true);
+    root.traverse(o => {
+      if (!o.isMesh || o.visible === false || !o.geometry) return;
+      let par = o.parent, shown = true;
+      while (par && shown) { if (par.visible === false) shown = false; par = par.parent; }
+      if (!shown) return;
+      const eg = new THREE.EdgesGeometry(o.geometry, angle);
+      dispose.push(eg);
+      if (o.isInstancedMesh) {
+        // repeated members (fins, columns) each need their own line copy
+        const solid = new THREE.InstancedMesh(o.geometry, mask, o.count);
+        solid.instanceMatrix.copy(o.instanceMatrix);
+        solid.applyMatrix4(o.matrixWorld);
+        solid.matrixAutoUpdate = false;
+        lineScene.add(solid);
+        for (let i = 0; i < o.count; i++) {
+          o.getMatrixAt(i, _m);
+          const l = new THREE.LineSegments(eg, mat);
+          l.applyMatrix4(_m.premultiply(o.matrixWorld));
+          l.matrixAutoUpdate = false;
+          lineScene.add(l);
+        }
+      } else {
+        const solid = new THREE.Mesh(o.geometry, mask);
+        solid.applyMatrix4(o.matrixWorld);
+        solid.matrixAutoUpdate = false;
+        lineScene.add(solid);
+        const l = new THREE.LineSegments(eg, mat);
+        l.applyMatrix4(o.matrixWorld);
+        l.matrixAutoUpdate = false;
+        lineScene.add(l);
+      }
+    });
+  };
+  // 22 degrees keeps the storey lines and reveals; a coarser angle would drop
+  // exactly the lines a renderer likes to smooth away
+  collect(group, building, 22);
+  if (withContext && contextGroup?.visible) collect(contextGroup, context, 46);
+
+  try {
+    renderer.setPixelRatio(1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    const clip0 = renderer.localClippingEnabled;
+    renderer.render(lineScene, camera);
+    renderer.localClippingEnabled = clip0;
+    return el.toDataURL('image/png');
+  } finally {
+    lineScene.clear();
+    dispose.forEach(d => d.dispose?.());
+    renderer.setPixelRatio(dpr0);
+    renderer.setSize(w0 / dpr0, h0 / dpr0, false);
+    camera.aspect = (el.clientWidth || 4) / (el.clientHeight || 3);
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  }
+}
+
 // ---------------- reverse: imported 3D mesh ----------------
 
 let importedGroup = null;
