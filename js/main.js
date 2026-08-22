@@ -16,6 +16,7 @@ import { interpretCommand, hasAI } from './chat.js';
 import { gptBuildMasses, hasGPT } from './openai.js';
 import { buildWithProtocol, fastBuild, quickCorrect } from './builder.js';
 import { scoreAgainst } from './score.js';
+import { sculpt, correctSculpt, coverage } from './sculpt.js';
 import { hasClaude, claudeConfig } from './claudecore.js';
 import * as versions from './versions.js';
 import * as ui from './ui.js';
@@ -430,6 +431,22 @@ async function buildPasses() {
         },
         snapshot: () => model.modelSnapshot(1100, { isolate: true }),
         step: label => { ui.veil(true, label); busy.textContent = label; },
+        inventory: inv => {
+          const n = (inv.features || []).length;
+          ui.addChatMsg('ai', `Survey: “${inv.parti}” — ${inv.storeys} storeys, ${n} identity-defining feature${n > 1 ? 's' : ''} found.`, 'prompt');
+        },
+        stage: (name, sc, n) => {
+          if (name === 'blockout') {
+            ui.addChatMsg('ai', `Blockout: ${n} primary mass${n > 1 ? 'es' : ''}` + (sc !== null ? `, scoring ${(sc * 100).toFixed(0)}/100 against the drawing.` : '.'));
+          }
+        },
+        coverage: c => {
+          if (c.missing.length) {
+            ui.addChatMsg('ai', `${c.claimed} of ${c.total} surveyed features built. Still missing: ${c.missing.map(f => f.what).join(', ')} — the correction pass will look for them.`, 'err');
+          } else if (c.total) {
+            ui.addChatMsg('ai', `All ${c.total} surveyed features are accounted for in the model.`);
+          }
+        },
         audit: a => {
           const n = (a.elements || a.features || []).length;
           const hyp = (a.hypotheses || []).length;
@@ -444,9 +461,16 @@ async function buildPasses() {
         try {
           if (deepMode) {
             v = await buildWithProtocol(lastSketchShot, io); engineUsed = 'the Claude protocol';
+          } else if (buildMode === 'accurate') {
+            // Survey, blockout, detail, correct — each stage locked before the
+            // next, so a good massing cannot be undone by a pass that was only
+            // meant to add a canopy.
+            v = await sculpt(lastSketchShot, io);
+            engineUsed = 'survey, blockout, detail';
+            if (v) v = await sculptCorrections(v, io, busy) || v;
           } else {
             v = await fastBuild(lastSketchShot, io); engineUsed = 'the fast lane';
-            if (v && buildMode === 'accurate') {
+            if (v && false) {
               // The single biggest lever on likeness is looking at your own
               // render and correcting — the thing a one-shot never does. Two
               // passes in the foreground, on the reading model, ~2 minutes.
@@ -582,6 +606,51 @@ async function correctionPasses(v, io, busy) {
       console.warn('correction pass ' + pass + ' failed', e);
       break;
     }
+  }
+  await io.apply(masses, camera);
+  return { ...v, masses, camera };
+}
+
+// The sculpt's own correction loop: gated on the measured score, and told
+// exactly which surveyed features are still missing.
+async function sculptCorrections(v, io, busy) {
+  const target = v.targetURL || lastSketchShot;
+  let masses = v.masses, camera = v.camera;
+  const measure = async () => {
+    try { return (await scoreAgainst(target, await io.snapshot())).score; } catch { return null; }
+  };
+  await io.apply(masses, camera);
+  let best = await measure();
+
+  for (let pass = 1; pass <= 2; pass++) {
+    const cov = coverage(v.inventory, masses);
+    const label = `Stage 4 of 4 — correcting${cov.missing.length ? ` (${cov.missing.length} feature${cov.missing.length > 1 ? 's' : ''} still missing)` : ''}…`;
+    ui.veil(true, label);
+    if (busy) busy.textContent = label;
+    try {
+      const r = await correctSculpt(target, masses, camera, v.inventory, {
+        snapshot: io.snapshot, model: claudeConfig().model,
+      });
+      if (!r) break;
+      await io.apply(r.masses, r.camera || camera);
+      const after = await measure();
+      const covAfter = coverage(v.inventory, r.masses);
+      // a pass earns its keep by likeness OR by building something missing
+      const better = best === null || after === null
+        || after >= best - 0.005 || covAfter.missing.length < cov.missing.length;
+      if (better) {
+        masses = r.masses;
+        if (r.camera) camera = r.camera;
+        if (after !== null && best !== null) {
+          ui.addChatMsg('ai', `Correction ${pass}: ${(after * 100).toFixed(0)}/100, ${covAfter.claimed}/${covAfter.total} features — kept.`);
+        }
+        if (after !== null) best = Math.max(best ?? 0, after);
+        if (!covAfter.missing.length && after !== null && best !== null && after >= best) break;
+      } else {
+        ui.addChatMsg('ai', `Correction ${pass} scored ${(after * 100).toFixed(0)}/100 against ${(best * 100).toFixed(0)} without finding anything missing — discarded.`);
+        break;
+      }
+    } catch (e) { console.warn('sculpt correction ' + pass + ' failed', e); break; }
   }
   await io.apply(masses, camera);
   return { ...v, masses, camera };

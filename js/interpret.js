@@ -396,6 +396,7 @@ export function sanitizeMasses(arr) {
     level: Number.isFinite(+m.level) ? Math.max(0, Math.round(+m.level)) : null,
     tier: ['primary', 'secondary', 'detail'].includes(m.tier) ? m.tier
       : (member ? 'detail' : (m.kind === 'slab' || ['canopy', 'roof', 'balcony', 'frame'].includes(role) ? 'secondary' : 'primary')),
+    covers: Array.isArray(m.covers) ? m.covers.slice(0, 8).map(String) : [],
     repeat: (r => r && ['x', 'y', 'z'].includes(r.axis) && +r.count >= 2 && +r.step > 0
       ? { axis: r.axis, count: Math.min(60, Math.round(+r.count)), step: cl(r.step, 0.15, 20, 1) }
       : null)(m.repeat),
@@ -778,6 +779,7 @@ export const MASS_SCHEMA = {
     partOf: { type: ['string', 'null'] },
     storeys: { type: ['integer', 'null'], minimum: 1, maximum: 80 },
     level: { type: ['integer', 'null'], minimum: 0, maximum: 80 },
+    covers: { type: 'array', items: { type: 'string' }, description: 'inventory feature ids this element accounts for' },
     tier: { type: 'string', enum: ['primary', 'secondary', 'detail'],
       description: 'primary = an inhabitable mass of the building; secondary = something that changes the silhouette (canopy, cantilevered slab, entry frame); detail = texture (fins, mullions, railings)' },
     repeat: {
