@@ -56,6 +56,12 @@ function apply() {
   kind = next;
   document.body.classList.remove('dev-desktop', 'dev-tablet', 'dev-phone');
   document.body.classList.add('dev-' + kind);
+  // The stylesheet used to ask (pointer: coarse) on its own. An iPad with a
+  // keyboard or a trackpad answers "fine", so the touch layout never applied
+  // and the desktop columns ran off the side of the screen. It now follows
+  // this classifier, which knows an iPad when it sees one.
+  document.body.classList.toggle('touch-ui',
+    kind !== 'desktop' || matchMedia('(pointer: coarse)').matches);
   if (changed) listeners.forEach(fn => fn(kind));
 }
 

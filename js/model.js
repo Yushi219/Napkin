@@ -2739,58 +2739,162 @@ export async function rhinoBytes(paramsJson, brief) {
   const rhino = rhinoRT;
   const doc = new rhino.File3dm();
   try { doc.settings().modelUnitSystem = rhino.UnitSystem.Meters; } catch { }
-  try {
-    const layer = new rhino.Layer();
-    layer.name = 'NAPKIN building';
-    layer.color = { r: 189, g: 95, b: 61, a: 255 };
-    doc.layers().add(layer);
-  } catch { }
 
-  // Real solids, not a triangle soup. Each volume becomes a capped extrusion
-  // of its rectangular footprint — a NURBS solid Rhino can fillet, boolean,
-  // offset and edit, and Grasshopper can drive. Three is Y-up, Rhino is Z-up:
-  // (x, y, z) -> (x, -z, y).
+  // ---- layers ----
+  // A modeller opens this file and wants to isolate things: one layer per
+  // building element, and the site broken out by what it is. Nesting where
+  // rhino3dm allows it, a flat "Parent::Child" naming where it does not —
+  // Rhino reads that as a hierarchy either way.
+  const layerIndex = new Map();
+  const layerOf = (name, colour, parentId) => {
+    if (layerIndex.has(name)) return layerIndex.get(name);
+    const L = new rhino.Layer();
+    L.name = name;
+    L.color = colour;
+    if (parentId) { try { L.parentLayerId = parentId; } catch { /* flat naming instead */ } }
+    const i = doc.layers().add(L);
+    layerIndex.set(name, i);
+    return i;
+  };
+  const idOfLayer = i => { try { return doc.layers().get(i).id; } catch { return null; } };
+
+  const buildingRoot = layerOf('BUILDING', { r: 189, g: 95, b: 61, a: 255 });
+  const siteRoot = layerOf('SITE', { r: 122, g: 138, b: 120, a: 255 });
+  const buildingId = idOfLayer(buildingRoot);
+  const siteId = idOfLayer(siteRoot);
+
+  const TIER_COL = {
+    primary: { r: 189, g: 95, b: 61, a: 255 },
+    secondary: { r: 217, g: 152, b: 84, a: 255 },
+    detail: { r: 150, g: 150, b: 140, a: 255 },
+    void: { r: 120, g: 150, b: 190, a: 255 },
+  };
+
+  // ---- one capped extrusion per element: a real NURBS solid ----
+  const addSolid = (ring, baseY, height, layer, name, strings) => {
+    if (!(height > 0.005) || ring.length < 3) return false;
+    try {
+      const pl = new rhino.Polyline();
+      for (const [x, y] of ring) pl.add(x, y, baseY);
+      pl.add(ring[0][0], ring[0][1], baseY);
+      const ex = rhino.Extrusion.create(pl.toNurbsCurve(), height, true);
+      if (!ex) return false;
+      let geo = ex;
+      try { const b = ex.toBrep(true); if (b) geo = b; } catch { /* an extrusion is a solid too */ }
+      const attrs = new rhino.ObjectAttributes();
+      attrs.layerIndex = layer;
+      attrs.name = name;
+      if (strings) for (const [k, v] of Object.entries(strings)) {
+        try { attrs.setUserString(k, String(v)); } catch { }
+      }
+      doc.objects().add(geo, attrs);
+      return true;
+    } catch { return false; }
+  };
+
+  // a rotated rectangle in Rhino XY, from a box in the app's frame
+  const boxRing = m => {
+    const hw = m.w / 2, hd = m.d / 2;
+    const a = THREE.MathUtils.degToRad(m.rotY || 0);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    return [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([px, pz]) => {
+      const x = m.x + px * ca + pz * sa;
+      const z = m.z - px * sa + pz * ca;
+      return [x, -z];                        // three Y-up -> Rhino Z-up
+    });
+  };
+
   let solids = 0;
+
+  // ---- the building ----
   if (state.masses?.length) {
     for (const m of expandedMasses()) {
-      try {
-        const hw = m.w / 2, hd = m.d / 2;
-        const a = THREE.MathUtils.degToRad(m.rotY || 0);
-        const ca = Math.cos(a), sa = Math.sin(a);
-        const corner = (px, pz) => {
-          const x = m.x + px * ca + pz * sa;
-          const z = m.z - px * sa + pz * ca;
-          return [x, -z];                       // Rhino XY
-        };
-        const ring = [corner(-hw, -hd), corner(hw, -hd), corner(hw, hd), corner(-hw, hd)];
-        const pl = new rhino.Polyline();
-        for (const [x, y] of ring) pl.add(x, y, m.y);
-        pl.add(ring[0][0], ring[0][1], m.y);    // close it
-        const ex = rhino.Extrusion.create(pl.toNurbsCurve(), Math.max(0.01, m.h), true);
-        if (!ex) continue;
-        let geo = ex;
-        try { const b = ex.toBrep(true); if (b) geo = b; } catch { /* extrusion is a solid too */ }
-        const attrs = new rhino.ObjectAttributes();
-        attrs.layerIndex = 0;
-        attrs.name = m.id || `volume ${solids + 1}`;
-        // provenance rides on the object, so a designer in Rhino can see where
-        // each solid came from and what it was called upstream
-        try {
-          attrs.setUserString('napkin.role', String(m.role || ''));
-          attrs.setUserString('napkin.kind', String(m.kind || 'volume'));
-          attrs.setUserString('napkin.on', String(m.on || 'ground'));
-          attrs.setUserString('napkin.size', `${m.w} x ${m.d} x ${m.h} m`);
-          attrs.setUserString('napkin.at', `${m.x}, ${m.y}, ${m.z}`);
-        } catch { }
-        doc.objects().add(geo, attrs);
-        solids++;
-      } catch (e) { console.warn('solid failed for', m.id, e); }
+      const tier = m.kind === 'void' ? 'void' : (m.tier || (m.kind === 'member' ? 'detail' : 'primary'));
+      const layer = layerOf(`BUILDING::${m.id}`, TIER_COL[tier] || TIER_COL.primary, buildingId);
+      if (addSolid(boxRing(m), m.y, Math.max(0.01, m.h), layer, m.id, {
+        'napkin.role': m.role || '', 'napkin.kind': m.kind || 'volume',
+        'napkin.tier': tier, 'napkin.on': m.on || 'ground',
+        'napkin.size': `${m.w} x ${m.d} x ${m.h} m`,
+      })) solids++;
+    }
+  } else if (towerGroup) {
+    // The tower archetype has no boxes — it is a stack of twisted, tapered
+    // floor plates. Each plate becomes its own solid, so the archetype
+    // examples arrive as NURBS like everything else instead of as a mesh.
+    const poly = basePolygon();
+    const fh = state.floorHeight;
+    for (let fl = 0; fl < state.floors; fl++) {
+      const { scale, rot, cx } = floorProfile(fl);
+      const ring = poly.map(([px, pz]) => {
+        const x = (px * scale + cx) * Math.cos(rot) + (pz * scale) * Math.sin(rot);
+        const z = -(px * scale + cx) * Math.sin(rot) + (pz * scale) * Math.cos(rot);
+        return [x, -z];
+      });
+      const layer = layerOf(`BUILDING::floor ${fl + 1}`, TIER_COL.primary, buildingId);
+      if (addSolid(ring, fl * fh, fh, layer, `floor ${fl + 1}`, {
+        'napkin.floor': fl + 1, 'napkin.scale': scale.toFixed(3),
+        'napkin.twistDeg': (THREE.MathUtils.radToDeg(rot)).toFixed(1),
+      })) solids++;
     }
   }
 
-  // Nothing parametric to extrude (the tower archetype, an imported mesh):
-  // fall back to meshes so the export is never empty.
+  // ---- the site, broken out by what it is ----
+  if (realSite) {
+    const siteLayer = (n, c) => layerOf('SITE::' + n, c, siteId);
+    const ctxL = siteLayer('context buildings', { r: 150, g: 145, b: 133, a: 255 });
+    for (const b of realSite.buildings || []) {
+      const cx = b.poly.reduce((a, q) => a + q[0], 0) / b.poly.length;
+      const cz = b.poly.reduce((a, q) => a + q[1], 0) / b.poly.length;
+      if (realSite.parcelLocal && _pip([cx, cz], realSite.parcelLocal)) continue;
+      addSolid(b.poly.map(([x, z]) => [x, -z]), realTerrainAt(cx, cz), b.h, ctxL, b.name || 'context building',
+        { 'napkin.height': b.h.toFixed(1) });
+    }
+    const roadL = siteLayer('roads', { r: 140, g: 136, b: 128, a: 255 });
+    const bridgeL = siteLayer('bridges', { r: 168, g: 160, b: 148, a: 255 });
+    for (const rd of realSite.roads || []) {
+      // a road segment is a thin slab: a real solid a modeller can boolean
+      for (let i = 0; i < rd.pts.length - 1; i++) {
+        const [x1, z1] = rd.pts[i], [x2, z2] = rd.pts[i + 1];
+        const len = Math.hypot(x2 - x1, z2 - z1);
+        if (len < 1) continue;
+        const nx = -(z2 - z1) / len * (rd.w / 2), nz = (x2 - x1) / len * (rd.w / 2);
+        const ring = [[x1 + nx, -(z1 + nz)], [x2 + nx, -(z2 + nz)], [x2 - nx, -(z2 - nz)], [x1 - nx, -(z1 - nz)]];
+        const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+        addSolid(ring, rd.bridge ? 3.4 : realTerrainAt(mx, mz), rd.bridge ? 0.6 : 0.15,
+          rd.bridge ? bridgeL : roadL, rd.kind || 'road', { 'napkin.class': rd.kind || '', 'napkin.widthM': rd.w });
+      }
+    }
+    const waterL = siteLayer('water', { r: 120, g: 155, b: 175, a: 255 });
+    for (const w of realSite.water || []) {
+      if (w.poly?.length >= 3) { addSolid(w.poly.map(([x, z]) => [x, -z]), 0, 0.1, waterL, 'water body'); continue; }
+      // a river arrives as a centreline: give it its width, segment by segment
+      for (let i = 0; w.pts && i < w.pts.length - 1; i++) {
+        const [x1, z1] = w.pts[i], [x2, z2] = w.pts[i + 1];
+        const len = Math.hypot(x2 - x1, z2 - z1);
+        if (len < 1) continue;
+        const nx = -(z2 - z1) / len * (w.w / 2), nz = (x2 - x1) / len * (w.w / 2);
+        addSolid([[x1 + nx, -(z1 + nz)], [x2 + nx, -(z2 + nz)], [x2 - nx, -(z2 - nz)], [x1 - nx, -(z1 - nz)]],
+          0, 0.1, waterL, 'river', { 'napkin.widthM': w.w });
+      }
+    }
+    const greenL = siteLayer('green', { r: 130, g: 160, b: 110, a: 255 });
+    for (const g of realSite.green || []) {
+      if (g.poly?.length >= 3) {
+        const cx = g.poly.reduce((a, q) => a + q[0], 0) / g.poly.length;
+        const cz = g.poly.reduce((a, q) => a + q[1], 0) / g.poly.length;
+        addSolid(g.poly.map(([x, z]) => [x, -z]), realTerrainAt(cx, cz), 0.1, greenL, 'green space');
+      }
+    }
+    if (realSite.parcelLocal?.length >= 3) {
+      const parcelL = siteLayer('parcel', { r: 189, g: 95, b: 61, a: 255 });
+      addSolid(realSite.parcelLocal.map(([x, z]) => [x, -z]), siteGroundLevel(), 0.12, parcelL, 'project parcel',
+        { 'napkin.areaM2': Math.round(parcelAreaM2() || 0) });
+    }
+  }
+
+  // ---- last resort: meshes, so an export is never empty ----
   if (!solids) {
+    const meshL = layerOf('BUILDING::mesh', TIER_COL.primary, buildingId);
     const v = new THREE.Vector3();
     let parts = 0;
     eachWorldMesh((pos, mw) => {
@@ -2801,7 +2905,7 @@ export async function rhinoBytes(paramsJson, brief) {
       }
       for (let i = 0; i < pos.count; i += 3) mesh.faces().addTriFace(i, i + 1, i + 2);
       const attrs = new rhino.ObjectAttributes();
-      attrs.layerIndex = 0;
+      attrs.layerIndex = meshL;
       attrs.name = `napkin part ${parts++}`;
       doc.objects().add(mesh, attrs);
     });
@@ -2811,8 +2915,8 @@ export async function rhinoBytes(paramsJson, brief) {
     doc.strings().set('napkin.params', paramsJson);
     doc.strings().set('napkin.brief', brief || '');
     doc.strings().set('napkin.note', solids
-      ? `${solids} NURBS solids, one per volume. Parameters in napkin.params; napkin-grasshopper.py rebuilds them parametrically in a GhPython component.`
-      : 'Meshes (this model has no parametric volumes). Parameters in napkin.params.');
+      ? `${solids} NURBS solids on ${layerIndex.size} layers — one per building element, the site broken out by type. napkin-grasshopper.py rebuilds the building parametrically.`
+      : 'Meshes only (no parametric geometry in this model).');
   } catch { }
   return doc.toByteArray();
 }

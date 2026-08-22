@@ -1056,50 +1056,56 @@ body.workspace .splitter#split-rail { display: none; }
 
 /* ================= Touch layout (phones and tablets) ================= */
 /* Gated by width as well as pointer: a touchscreen laptop is still a desktop. */
-@media (pointer: coarse) and (max-width: 1200px) {
-  body.workspace #stage,
-  body.landing #stage,
-  #stage { grid-template-columns: 1fr !important; grid-template-rows: 1fr !important; }
-  body.landing #stage { grid-template-rows: 1fr auto !important; }
-  #left-col, #mid-col { grid-column: 1 !important; grid-row: 1 !important; }
-  body.landing #gallery-wrap { grid-column: 1 !important; grid-row: 2 !important; }
-  body.workspace #gallery-wrap, body.workspace #mobile-tabs { display: none; }
-  body.workspace.pane-model #left-col { display: none; }
-  body.workspace.pane-sketch #mid-col { display: none; }
+/* The touch layout keys off body.touch-ui, which device.js sets from the same
+   capability-first detection the JS uses, rather than off (pointer: coarse)
+   alone. An iPad with a keyboard or a trackpad reports a FINE pointer: under
+   the old condition none of these rules applied, the three-column layout kept
+   asking for ~1420px on an 834px screen, and the view modes, frame ratio,
+   fullscreen, versions and settings were pushed off the right-hand edge. */
+@media (max-width: 1200px) {
+  body.touch-ui.workspace #stage,
+  body.touch-ui.landing #stage,
+  body.touch-ui #stage { grid-template-columns: 1fr !important; grid-template-rows: 1fr !important; }
+  body.touch-ui.landing #stage { grid-template-rows: 1fr auto !important; }
+  body.touch-ui #left-col, body.touch-ui #mid-col { grid-column: 1 !important; grid-row: 1 !important; }
+  body.touch-ui.landing #gallery-wrap { grid-column: 1 !important; grid-row: 2 !important; }
+  body.touch-ui.workspace #gallery-wrap, body.touch-ui.workspace #mobile-tabs { display: none; }
+  body.touch-ui.workspace.pane-model #left-col { display: none; }
+  body.touch-ui.workspace.pane-sketch #mid-col { display: none; }
   /* Both columns share one grid cell here, so whichever comes last is on top.
      On the landing page that was the model — an invisible sheet of glass over
      the napkin that swallowed every finger stroke. There is nothing to show
      in it until a project is open. */
-  body.landing #mid-col { display: none; }
-  body.workspace #stage > section + section { border-left: none; }
+  body.touch-ui.landing #mid-col { display: none; }
+  body.touch-ui.workspace #stage > section + section { border-left: none; }
 
   /* the metric rail belongs in the Metrics sheet, not over the model */
-  body.workspace #metric-rail { display: none; }
-  #dash { padding: calc(5px + env(safe-area-inset-top)) 10px 5px; gap: 8px; }
-  .dash-type label, #dash-signature, .brand-sub { display: none; }
+  body.touch-ui.workspace #metric-rail { display: none; }
+  body.touch-ui #dash { padding: calc(5px + env(safe-area-inset-top)) 10px 5px; gap: 8px; }
+  body.touch-ui .dash-type label, body.touch-ui #dash-signature, body.touch-ui .brand-sub { display: none; }
 
-  #phone-bar { display: flex; }
-  body.landing #phone-bar { display: none; }
+  body.touch-ui #phone-bar { display: flex; }
+  body.touch-ui.landing #phone-bar { display: none; }
 
   /* ---- the work bar: small, quiet, thumb-sized ---- */
-  #phone-bar {
+  body.touch-ui #phone-bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
     align-items: stretch; gap: 2px;
     background: #fffdf8ee; backdrop-filter: blur(14px);
     border-top: 1px solid var(--line);
     padding: 3px 6px calc(3px + env(safe-area-inset-bottom));
   }
-  #phone-bar button {
+  body.touch-ui #phone-bar button {
     flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
     background: none; border: none; cursor: pointer; padding: 5px 2px;
     border-radius: 10px; color: var(--muted); font-family: var(--font-ui);
   }
-  #phone-bar button svg { width: 19px; height: 19px; }
-  #phone-bar button span { font-size: 9px; }
-  #phone-bar button.active { color: var(--accent); background: var(--accent-soft); }
+  body.touch-ui #phone-bar button svg { width: 19px; height: 19px; }
+  body.touch-ui #phone-bar button span { font-size: 9px; }
+  body.touch-ui #phone-bar button.active { color: var(--accent); background: var(--accent-soft); }
 
   /* ---- sheets: low, translucent, horizontal ---- */
-  #site-bar, #model-controls, #params-panel, #chatbar, #metric-sheet {
+  body.touch-ui #site-bar, body.touch-ui #model-controls, body.touch-ui #params-panel, body.touch-ui #chatbar, body.touch-ui #metric-sheet {
     position: fixed; left: 6px; right: 6px; top: auto;
     bottom: calc(52px + env(safe-area-inset-bottom));
     width: auto; max-width: none; z-index: 39;
@@ -1111,59 +1117,59 @@ body.workspace .splitter#split-rail { display: none; }
     padding: 14px 10px 10px; margin: 0;
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   }
-  #site-bar::-webkit-scrollbar, #model-controls::-webkit-scrollbar,
-  #params-panel::-webkit-scrollbar, #chatbar::-webkit-scrollbar,
-  #metric-sheet::-webkit-scrollbar { display: none; }
-  #site-bar::before, #model-controls::before, #params-panel::before,
-  #chatbar::before, #metric-sheet::before {
+  body.touch-ui #site-bar::-webkit-scrollbar, body.touch-ui #model-controls::-webkit-scrollbar,
+  body.touch-ui #params-panel::-webkit-scrollbar, body.touch-ui #chatbar::-webkit-scrollbar,
+  body.touch-ui #metric-sheet::-webkit-scrollbar { display: none; }
+  body.touch-ui #site-bar::before, body.touch-ui #model-controls::before, body.touch-ui #params-panel::before,
+  body.touch-ui #chatbar::before, body.touch-ui #metric-sheet::before {
     content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
     width: 34px; height: 3px; border-radius: 2px; background: #00000018;
   }
-  body.sheet-scene #site-bar, body.sheet-tools #model-controls,
-  body.sheet-params #params-panel, body.sheet-chat #chatbar,
-  body.sheet-metric #metric-sheet { transform: translateY(0); }
+  body.touch-ui.sheet-scene #site-bar, body.touch-ui.sheet-tools #model-controls,
+  body.touch-ui.sheet-params #params-panel, body.touch-ui.sheet-chat #chatbar,
+  body.touch-ui.sheet-metric #metric-sheet { transform: translateY(0); }
 
   /* controls inside a sheet: chips, not full-width bars */
-  #site-bar select, #site-bar .pill-btn, #model-controls .pill-btn, .vmode {
+  body.touch-ui #site-bar select, body.touch-ui #site-bar .pill-btn, body.touch-ui #model-controls .pill-btn, body.touch-ui .vmode {
     flex: 0 0 auto; width: auto; font-size: 11px; padding: 6px 11px;
   }
-  #site-bar .seg, #site-bar .seg.small { flex: 0 0 auto; width: auto; display: inline-flex; }
-  #site-bar .seg button { flex: 0 0 auto; padding: 6px 10px; font-size: 10.5px; }
-  #sun-hour { flex: 1 1 120px; width: auto; min-width: 110px; }
-  #sun-readout { flex: 0 0 auto; width: auto; }
-  #site-bar .sb-sep, #site-bar .sb-break { display: none; }
-  #model-controls { flex-direction: row; }
-  #model-controls .pill-btn { flex: 0 0 auto; justify-content: center; }
-  #view-modes { padding: 0; gap: 4px; flex: 0 0 auto; }
+  body.touch-ui #site-bar .seg, body.touch-ui #site-bar .seg.small { flex: 0 0 auto; width: auto; display: inline-flex; }
+  body.touch-ui #site-bar .seg button { flex: 0 0 auto; padding: 6px 10px; font-size: 10.5px; }
+  body.touch-ui #sun-hour { flex: 1 1 120px; width: auto; min-width: 110px; }
+  body.touch-ui #sun-readout { flex: 0 0 auto; width: auto; }
+  body.touch-ui #site-bar .sb-sep, body.touch-ui #site-bar .sb-break { display: none; }
+  body.touch-ui #model-controls { flex-direction: row; }
+  body.touch-ui #model-controls .pill-btn { flex: 0 0 auto; justify-content: center; }
+  body.touch-ui #view-modes { padding: 0; gap: 4px; flex: 0 0 auto; }
 
   /* params: two compact columns of sliders */
-  #params-panel { display: block; padding: 16px 10px 10px; }
-  #params-panel .pgroup {
+  body.touch-ui #params-panel { display: block; padding: 16px 10px 10px; }
+  body.touch-ui #params-panel .pgroup {
     display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px;
     border: none; padding: 0 0 6px; margin-bottom: 6px;
     border-bottom: 1px solid #00000010;
   }
-  #params-panel .pgroup-head { grid-column: 1 / -1; margin-bottom: 2px; }
-  #params-panel .prow { grid-template-columns: 46px 1fr 34px; gap: 5px; margin: 0; }
-  #params-panel .prow label { font-size: 9px; }
-  #params-panel .pval { font-size: 9px; }
-  #params-panel .pchoice { grid-column: span 1; }
-  #params-panel .pflag { grid-column: span 1; }
+  body.touch-ui #params-panel .pgroup-head { grid-column: 1 / -1; margin-bottom: 2px; }
+  body.touch-ui #params-panel .prow { grid-template-columns: 46px 1fr 34px; gap: 5px; margin: 0; }
+  body.touch-ui #params-panel .prow label { font-size: 9px; }
+  body.touch-ui #params-panel .pval { font-size: 9px; }
+  body.touch-ui #params-panel .pchoice { grid-column: span 1; }
+  body.touch-ui #params-panel .pflag { grid-column: span 1; }
 
   /* metrics: a tidy grid of cards */
-  #metric-sheet { display: flex; }
-  #metric-sheet .metric { flex: 1 1 28%; min-width: 92px; padding: 5px 9px; }
+  body.touch-ui #metric-sheet { display: flex; }
+  body.touch-ui #metric-sheet .metric { flex: 1 1 28%; min-width: 92px; padding: 5px 9px; }
 
   /* chat */
-  #chat-log { max-height: 22vh; flex: 1 1 100%; }
-  #chatbar { gap: 6px; }
-  #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; padding: 10px 12px; }
-  .chat-glyph { display: none; }
-  #chatbar .build-btn.small { flex: 1 1 auto; padding: 9px 12px; }
-  #btn-mic, #ref-label { flex: 0 0 auto; padding: 8px 12px; }
+  body.touch-ui #chat-log { max-height: 22vh; flex: 1 1 100%; }
+  body.touch-ui #chatbar { gap: 6px; }
+  body.touch-ui #chat-input { flex: 1 1 100%; order: -1; font-size: 16px; padding: 10px 12px; }
+  body.touch-ui .chat-glyph { display: none; }
+  body.touch-ui #chatbar .build-btn.small { flex: 1 1 auto; padding: 9px 12px; }
+  body.touch-ui #btn-mic, body.touch-ui #ref-label { flex: 0 0 auto; padding: 8px 12px; }
 
-  .drawer-tab, .splitter, #gal-preview { display: none !important; }
-  #render-strip { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
+  body.touch-ui .drawer-tab, body.touch-ui .splitter, body.touch-ui #gal-preview { display: none !important; }
+  body.touch-ui #render-strip { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
 }
 
 /* phones only: the napkin page keeps its rail below */
@@ -1233,49 +1239,49 @@ body.fs #cam-legend b { color: #fff; }
 body.fs #viewport > #cam-pane #cam-hint { border-color: #ffffff1f; color: #b9b3a8; }
 
 /* ---- sheets: a grid, so no row ends in dead space ---- */
-@media (pointer: coarse) and (max-width: 1200px) {
+@media (max-width: 1200px) {
   /* the frame rides high: the empty band lands under it, where the sheets open */
-  #viewport { align-items: flex-start; }
+  body.touch-ui #viewport { align-items: flex-start; }
 
-  #site-bar {
+  body.touch-ui #site-bar {
     display: grid !important;
     grid-template-columns: repeat(6, 1fr);
     gap: 8px 6px; align-content: start;
   }
-  #site-bar .sb-sep, #site-bar .sb-break { display: none; }
-  #site-select   { grid-area: 1 / 1 / 2 / 4; }
-  #btn-landscape { grid-area: 1 / 4 / 2 / 7; }
-  #season-seg    { grid-area: 2 / 1 / 3 / 4; }
-  #btn-weather   { grid-area: 2 / 4 / 3 / 7; }
-  #sun-hour      { grid-area: 3 / 1 / 4 / 5; align-self: center; }
-  #sun-readout   { grid-area: 3 / 5 / 4 / 7; text-align: right; font-size: 11px; align-self: center; }
-  #detail-seg    { grid-area: 4 / 1 / 5 / 7; }
-  #btn-context   { grid-area: 5 / 1 / 6 / 4; }
-  #btn-spin      { grid-area: 5 / 4 / 6 / 7; }
-  #site-bar > * { min-width: 0; width: 100%; }
-  #site-bar select {
+  body.touch-ui #site-bar .sb-sep, body.touch-ui #site-bar .sb-break { display: none; }
+  body.touch-ui #site-select { grid-area: 1 / 1 / 2 / 4; }
+  body.touch-ui #btn-landscape { grid-area: 1 / 4 / 2 / 7; }
+  body.touch-ui #season-seg { grid-area: 2 / 1 / 3 / 4; }
+  body.touch-ui #btn-weather { grid-area: 2 / 4 / 3 / 7; }
+  body.touch-ui #sun-hour { grid-area: 3 / 1 / 4 / 5; align-self: center; }
+  body.touch-ui #sun-readout { grid-area: 3 / 5 / 4 / 7; text-align: right; font-size: 11px; align-self: center; }
+  body.touch-ui #detail-seg { grid-area: 4 / 1 / 5 / 7; }
+  body.touch-ui #btn-context { grid-area: 5 / 1 / 6 / 4; }
+  body.touch-ui #btn-spin { grid-area: 5 / 4 / 6 / 7; }
+  body.touch-ui #site-bar > * { min-width: 0; width: 100%; }
+  body.touch-ui #site-bar select {
     background: #ffffffcc; border: 1px solid var(--line); border-radius: 14px;
     padding: 8px 10px;
   }
-  #site-bar .seg { display: flex; }
-  #site-bar .seg button { flex: 1; }
-  #site-bar .pill-btn { text-align: center; }
+  body.touch-ui #site-bar .seg { display: flex; }
+  body.touch-ui #site-bar .seg button { flex: 1; }
+  body.touch-ui #site-bar .pill-btn { text-align: center; }
 
-  #model-controls {
+  body.touch-ui #model-controls {
     display: grid !important;
     grid-template-columns: 1fr 1fr;
     gap: 8px 6px; align-content: start;
   }
-  #model-controls > .pill-btn, #model-controls > label.pill-btn {
+  body.touch-ui #model-controls > .pill-btn, body.touch-ui #model-controls > label.pill-btn {
     width: 100%; text-align: center;
   }
-  #model-controls #btn-rhino { grid-column: 1 / -1; }
+  body.touch-ui #model-controls #btn-rhino { grid-column: 1 / -1; }
 
-  #metric-sheet { justify-content: flex-start; align-content: flex-start; row-gap: 8px; column-gap: 6px; }
-  .sheet-empty { flex: 1 1 100%; text-align: center; color: var(--faint); font-size: 12px; padding: 10px 0; }
+  body.touch-ui #metric-sheet { justify-content: flex-start; align-content: flex-start; row-gap: 8px; column-gap: 6px; }
+  body.touch-ui .sheet-empty { flex: 1 1 100%; text-align: center; color: var(--faint); font-size: 12px; padding: 10px 0; }
 
   /* the tab bar shows which pane you are in */
-  #phone-bar [data-sheet="napkin"].active { color: var(--accent); background: var(--accent-soft); }
+  body.touch-ui #phone-bar [data-sheet="napkin"].active { color: var(--accent); background: var(--accent-soft); }
 }
 
 /* ================= One icon set ================= */
@@ -1301,13 +1307,13 @@ body.fs #viewport > #cam-pane #cam-hint { border-color: #ffffff1f; color: #b9b3a
    each sets a width, and the floor set a taller height. Written here, after
    the desktop sizing further up, and with body in front so the later
    #btn-home rule cannot win the width back. */
-@media (pointer: coarse) and (max-width: 1200px) {
-  body #btn-home, body #btn-settings {
+@media (max-width: 1200px) {
+  body.touch-ui #btn-home, body.touch-ui #btn-settings {
     width: 34px; height: 34px; min-height: 34px; min-width: 34px; padding: 0;
     border-radius: 50%; flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center;
   }
-  body #btn-home .ico, body #btn-settings .ico { width: 15px; height: 15px; }
+  body.touch-ui #btn-home .ico, body.touch-ui #btn-settings .ico { width: 15px; height: 15px; }
 }
 
 /* ---- the scale control sits above the volumes, and reads as the summary ---- */
@@ -1488,9 +1494,9 @@ body.workspace #site-row { display: none; }
 }
 #dash-site:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 #dash-site.pinned { border-color: var(--accent); color: var(--accent); }
-@media (pointer: coarse) and (max-width: 1200px) {
-  #project-name { width: 96px; font-size: 13px; }
-  #dash-site { max-width: 104px; font-size: 9.5px; padding: 4px 8px; }
+@media (max-width: 1200px) {
+  body.touch-ui #project-name { width: 96px; font-size: 13px; }
+  body.touch-ui #dash-site { max-width: 104px; font-size: 9.5px; padding: 4px 8px; }
 }
 
 /* the landing keeps its own type picker (the header hides there); the
@@ -1628,9 +1634,9 @@ body.reviewing #review-table { display: flex; }
 
 /* the floating panel shrinks to a tally: the table carries the detail now */
 body.reviewing #audit-panel { width: auto; }
-@media (pointer: coarse) and (max-width: 1200px) {
-  body.reviewing.pane-model #review-table { display: none; }
-  .rt-face { width: 32px; height: 32px; }
+@media (max-width: 1200px) {
+  body.touch-ui.reviewing.pane-model #review-table { display: none; }
+  body.touch-ui .rt-face { width: 32px; height: 32px; }
 }
 
 /* the compass rail under the turn slider: where the front is pointing */
@@ -1670,3 +1676,74 @@ body.reviewing #audit-panel { width: auto; }
 
 .rt-item.sev-note { border-left-color: #8a93a5; background: #f7f8fa; }
 .rt-item.sev-note .rt-issue { color: var(--ink-soft); }
+
+/* ================= Touch: nothing gets lost ================= */
+@media (max-width: 1200px) {
+  body.touch-ui #mid-col { min-width: 0; }
+
+  /* The view-mode row was being squeezed to 52px and pushed off-screen, taking
+     Sketch, Wood, Audit, Edit, the frame ratio and fullscreen with it. It now
+     sits above the model as a full-width strip that scrolls sideways, with the
+     two icon buttons pinned to the right edge so they are always in reach. */
+  body.touch-ui #view-modes {
+    order: -1;
+    position: relative; z-index: 12;
+    width: 100%; flex: 0 0 auto;
+    display: flex; flex-wrap: nowrap; align-items: center;
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 7px 8px 6px; gap: 4px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+  body.touch-ui #view-modes::-webkit-scrollbar { display: none; }
+  body.touch-ui #view-modes .vmode { flex: 0 0 auto; padding: 6px 11px; font-size: 11px; }
+  body.touch-ui #view-modes #btn-aspect,
+  body.touch-ui #view-modes #btn-fs {
+    position: sticky; right: 0; flex: 0 0 auto;
+    background: var(--paper); box-shadow: -8px 0 8px -6px #0000001f;
+  }
+  body.touch-ui #view-modes #btn-aspect { right: 36px; margin-left: auto; }
+
+  /* the dashboard scrolls rather than clipping whatever does not fit */
+  body.touch-ui #dash {
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; align-items: center; gap: 6px;
+  }
+  body.touch-ui #dash::-webkit-scrollbar { display: none; }
+  body.touch-ui #dash > * { flex: 0 0 auto; min-width: 0; }
+
+  /* Squeezing the dashboard is for a phone only. The wordmark goes (the back
+     arrow already says where you are) and the numbers move to their own sheet,
+     which buys the site chip room to sit on screen at 375px. An iPad has space
+     for the real thing. */
+  body.touch-ui.dev-phone #dash .brand-name,
+  body.touch-ui.dev-phone #dash #metric-rail { display: none; }
+  body.touch-ui.dev-phone .dash-type { gap: 5px; min-width: 0; }
+  body.touch-ui.dev-phone #project-name { width: 84px; min-width: 0; font-size: 11px; padding: 4px 6px; }
+  body.touch-ui.dev-phone #type-select { max-width: 84px; font-size: 11px; padding: 4px 4px; }
+  body.touch-ui.dev-phone #dash-site { max-width: 88px; font-size: 9.5px; padding: 4px 7px; }
+  body.touch-ui.dev-phone #btn-versions { padding: 5px 8px; font-size: 10.5px; }
+
+  /* Refine sits beside Build and must be tappable, not zero-sized */
+  body.touch-ui #btn-refine { flex: 0 0 auto; min-height: 38px; padding: 6px 12px; }
+
+  /* the review table takes over the napkin pane while Audit is on */
+  body.touch-ui.reviewing.pane-sketch #review-table { display: flex; height: 100%; }
+  body.touch-ui.reviewing.pane-model #review-table { display: none; }
+  body.touch-ui #rt-advice { max-height: 40%; }
+
+  /* Fullscreen collapses the strip to the way out. The notch padding comes
+     from the fullscreen rule above — do not zero it here. */
+  body.touch-ui.fs #view-modes {
+    order: 0; width: auto;
+    /* the strip is relative in the normal layout, so fullscreen has to put it
+       back in the corner by hand — and keep the notch padding it sets there */
+    position: fixed; top: 0; right: 0; left: auto; bottom: auto;
+    padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 0 0;
+    background: none; border: none; overflow: visible;
+  }
+  body.touch-ui.fs #view-modes #btn-aspect { display: none; }
+  body.touch-ui.fs #view-modes #btn-fs { position: static; box-shadow: none; }
+}

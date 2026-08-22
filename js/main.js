@@ -1254,6 +1254,9 @@ function renderReviewTable(report) {
 
 function setAuditMode(on) {
   auditOn = on;
+  // on a phone the review lives in the napkin pane, so the tab says so
+  const napTab = document.querySelector('#phone-bar [data-sheet="napkin"] span');
+  if (napTab) napTab.textContent = on ? 'Review' : 'Napkin';
   $('audit-panel').classList.toggle('hidden', !on);
   // Audit hands the left column to the review table — the napkin steps aside
   document.body.classList.toggle('reviewing', on);
@@ -1861,10 +1864,10 @@ function wire() {
     });
   };
 
-  if (isTouch() && innerWidth <= 1200) {
-    // one home for everything that changes how the scene looks
-    $('site-bar').prepend($('view-modes'));
-  }
+  // The view modes used to be folded into the Scene sheet on touch, which meant
+  // Sketch, Wood, Audit, Edit, the frame ratio and fullscreen were only there
+  // if you knew to open a drawer. They now stay above the model as a strip that
+  // scrolls sideways — every mode one tap away on a phone, as on a desktop.
 
   // Frame ratio: the canvas is letterboxed to this, so what you compose is
   // exactly what the render model receives.
